@@ -1,0 +1,22 @@
+# Dataset preparation (prepare_dataset.py) only uses the Python stdlib.
+# Pins below match LLaMA-Factory v0.9.2 constraints (see its requirements.txt).
+# https://github.com/hiyouga/LLaMA-Factory/blob/v0.9.2/requirements.txt
+#
+# setuptools>=70: Python 3.12 removed pkgutil.ImpImporter; old pkg_resources (jieba via LLaMA-Factory) needs a current setuptools.
+setuptools>=70.0.0
+
+transformers==4.49.0
+peft==0.12.0
+accelerate==1.0.1
+datasets==3.0.2
+trl==0.9.6
+bitsandbytes==0.44.1
+
+# Qwen2.5-VL utilities (image processing helpers).
+qwen-vl-utils==0.0.8
+
+# Used implicitly by the Qwen2.5-VL processor at training time.
+Pillow>=10.0.0
+
+# Optional: pandas is handy for poking at the labeled CSV; not used by prepare_dataset.py.
+pandas>=2.0.0

@@ -1,0 +1,72 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Agent / local tooling
+.cursor/
+.claude/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+.ipynb_checkpoints/
+
+# Node / TypeScript
+node_modules/
+dist/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+.npm/
+.eslintcache
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs and local runtime data
+logs/
+*.log
+birr-track-backend/data/
+
+# Model weights and checkpoints
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+checkpoints/
+
+# qwen-vlm-training (generated / local artifacts)
+qwen-vlm-training/train.json
+qwen-vlm-training/val.json
+qwen-vlm-training/dataset_info.json
+qwen-vlm-training/runs/
+qwen-vlm-training/kaggle-upload/
+
+# vlm-inference (LoRA adapters; keep directory placeholder if present)
+vlm-inference/adapters/*
+!vlm-inference/adapters/.gitkeep

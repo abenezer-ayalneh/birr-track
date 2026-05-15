@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+
+# LoRA weights (download from Kaggle); keep adapters/.gitkeep
+adapters/*
+!adapters/.gitkeep
