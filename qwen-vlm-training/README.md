@@ -8,7 +8,7 @@ End-to-end recipe for fine-tuning `Qwen/Qwen2.5-VL-3B-Instruct` on Ethiopian ban
 | --- | --- |
 | `prepare_dataset.py` | Converts `documents/labeled-data.csv` + `documents/receipts/` into LLaMA-Factory sharegpt-vision JSON (`train.json` / `val.json`). |
 | `write_train_config.py` | Writes `train_config.yaml` (same hyperparams as the Kaggle notebook). Use `--smoke` for a tiny run to validate your machine before uploading. |
-| `train_qwen_vl_kaggle.ipynb` | **Preferred** Kaggle notebook — minimal pip install (Python 3.10). |
+| `train_qwen_vl_kaggle.ipynb` | **Preferred** Kaggle notebook — Python 3.12.12 (numpy 2.x + setuptools fixes). |
 | `train_qwen_vl.ipynb` | Legacy notebook (complex numpy workarounds); use the Kaggle notebook instead. |
 | `package_kaggle_dataset.py` | Stages `kaggle-upload/` for Kaggle Dataset upload. |
 | `eval_val.py` | Field-level accuracy on `val.json` vs adapter (optional Ollama baseline). |
@@ -109,7 +109,7 @@ Expected layout once mounted on Kaggle:
 
 1. Create a new Kaggle Notebook from **`train_qwen_vl_kaggle.ipynb`**.
 2. Right panel:
-   - **Language** → **Python 3.10** (required — avoids pip / `pkgutil` failures on 3.12)
+   - **Environment** → **Python 3.12** (default on Kaggle, e.g. 3.12.12)
    - **Accelerator** → `GPU T4 x2`
    - **Internet** → ON
    - **Add Data** → attach `birrtrack-receipts`
@@ -162,7 +162,11 @@ Harmless noise when TensorFlow/XLA and PyTorch are both present on the same GPU 
 
 ### Troubleshooting: pip install fails on Kaggle
 
-Use **`train_qwen_vl_kaggle.ipynb`** (not `train_qwen_vl.ipynb`). Set **Language → Python 3.10**. The install cell only clones LLaMA-Factory v0.9.2, then adds `transformers==4.49.0` and `qwen-vl-utils` — do not `pip install peft` or force numpy upgrades afterward.
+Use **`train_qwen_vl_kaggle.ipynb`** (not `train_qwen_vl.ipynb`). Works on **Python 3.12.12** (Kaggle default). The install cell clones LLaMA-Factory v0.9.2, re-pins **numpy 2.2.2** for 3.12, upgrades **setuptools ≥ 70**, then adds `transformers==4.49.0` and `qwen-vl-utils`. Do not `pip install peft` afterward.
+
+If you see `cannot import name '_center'` or `'numpy.ufunc' object has no attribute '__module__'`, a prior cell upgraded **system** numpy. **Session → Restart session**, use the latest `train_qwen_vl_kaggle.ipynb` (installs into `/kaggle/working/birrtrack_site` only), then **Run all**.
+
+If you see `ImpImporter` during training, re-run the install cell, then the train cell (setuptools + `PYTHONPATH` fix is in both).
 
 ## Tuning knobs
 
