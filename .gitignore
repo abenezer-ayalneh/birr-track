@@ -66,7 +66,12 @@ qwen-vlm-training/val.json
 qwen-vlm-training/dataset_info.json
 qwen-vlm-training/runs/
 qwen-vlm-training/kaggle-upload/
+qwen-vlm-training/qwen25vl-3b-birrtrack-lora.zip/
 
 # vlm-inference (LoRA adapters; keep directory placeholder if present)
 vlm-inference/adapters/*
 !vlm-inference/adapters/.gitkeep
+
+# llama.cpp clone (build helper for HF→GGUF / LoRA→GGUF conversion).
+# Cloneable on demand; not part of the project tree.
+/llama.cpp/

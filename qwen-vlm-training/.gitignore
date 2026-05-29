@@ -14,3 +14,12 @@ runs/
 # Staged upload folder (package_kaggle_dataset.py).
 kaggle-upload/
 
+# Downloaded Kaggle training-run archive (large; re-download as needed).
+kaggle-trained/*.zip
+
+# LoRA merge output from merge_lora.py (~7 GB HF model; regenerable).
+merged/
+
+# llama.cpp conversion outputs. Modelfile is tracked; GGUFs are not.
+gguf/*.gguf
+

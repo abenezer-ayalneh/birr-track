@@ -1,0 +1,40 @@
+# Production Ollama model for birr-track receipt extraction.
+#
+# PHASE 2 OUTCOME (2026-05-29):
+#
+# Goal was to convert the fine-tuned LoRA → GGUF and serve via Ollama.
+# Two paths were attempted:
+#
+#   1. Merge LoRA into Qwen2.5-VL-3B base → convert text+mmproj to GGUF →
+#      quantize → load with two FROM directives.
+#      Result: text generation works. Image grounding produces garbled
+#      output. llama.cpp's Qwen2.5-VL mmproj conversion is unreliable in
+#      the version we built against (verified by gibberish responses on
+#      cbe_screenshot_1.jpg; stock 3B handles it correctly).
+#
+#   2. Convert LoRA adapter to GGUF and apply via Modelfile ADAPTER on top
+#      of stock qwen2.5vl:3b.
+#      Result: ollama errors with "loras are not yet implemented" for the
+#      qwen25vl architecture.
+#
+# Until upstream tooling matures (llama.cpp mmproj conversion, or Ollama
+# LoRA support for VL models), we ship the stock 3B model. It already
+# produces correct JSON extraction on test receipts.
+#
+# The fine-tuning artifacts are preserved for future retry:
+#   - vlm-inference/adapters/qwen25vl-3b-birrtrack-lora/  (HF PEFT adapter)
+#   - qwen-vlm-training/merged/qwen25vl-3b-birrtrack/     (merged HF model)
+#   - qwen-vlm-training/gguf/birrtrack-lora-f16.gguf      (LoRA as GGUF)
+#   - qwen-vlm-training/gguf/birrtrack-qwen25vl-3b-text-q4_k_m.gguf
+#   - qwen-vlm-training/gguf/birrtrack-qwen25vl-3b-mmproj-f16.gguf
+#
+# If the fine-tuned model is required *now*, set VLM_BACKEND=peft in
+# vlm-inference/.env. PEFT runs the merged HF model directly via
+# transformers — works on any device but slow on CPU.
+
+FROM qwen2.5vl:3b
+
+# Deterministic decoding for receipt extraction
+PARAMETER temperature 0
+PARAMETER top_p 1
+PARAMETER num_predict 256
