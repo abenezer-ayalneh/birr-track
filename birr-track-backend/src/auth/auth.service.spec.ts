@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
 import { UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Test, TestingModule } from '@nestjs/testing'
@@ -161,6 +160,8 @@ describe('AuthService', () => {
 
 			params.append('hash', hash)
 			const initData = params.toString()
+
+			jest.spyOn(usersService, 'isPlatformOwner').mockReturnValue(true)
 
 			const result = await service.authenticateFromInitData(initData)
 
