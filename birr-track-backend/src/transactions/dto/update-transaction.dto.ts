@@ -28,5 +28,5 @@ export class UpdateTransactionDto {
 
 	@IsOptional()
 	@IsString()
-	imageUrl?: string
+	imageKey?: string
 }

@@ -8,12 +8,14 @@ import AppController from './app.controller'
 import AppService from './app.service'
 import { BusinessesModule } from './businesses/businesses.module'
 import { createTypeOrmConfig } from './config/typeorm.config'
+import { InvitesModule } from './invites/invites.module'
 import { ProcessingModule } from './processing/processing.module'
 import { QueueModule } from './queue/queue.module'
 import GlobalExceptionFilter from './shared/filters/global-exception.filter'
 import { ContextAwareThrottlerGuard } from './shared/guards/context-aware-throttler.guard'
 import { TelegramModule } from './telegram/telegram.module'
 import { TransactionsModule } from './transactions/transactions.module'
+import { UsersModule } from './users/users.module'
 import { WebsocketModule } from './websocket/websocket.module'
 
 @Module({
@@ -38,6 +40,8 @@ import { WebsocketModule } from './websocket/websocket.module'
 		ProcessingModule,
 		TransactionsModule,
 		BusinessesModule,
+		UsersModule,
+		InvitesModule,
 		WebsocketModule,
 	],
 	controllers: [AppController],

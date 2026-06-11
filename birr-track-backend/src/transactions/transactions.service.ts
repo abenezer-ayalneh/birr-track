@@ -10,7 +10,7 @@ import { UpdateTransactionDto } from './dto/update-transaction.dto'
 import { EditLog } from './entities/edit-log.entity'
 import { Transaction } from './entities/transaction.entity'
 
-type EditableTransactionField = 'amount' | 'transactionId' | 'timestamp' | 'bankName' | 'confidence' | 'imageUrl'
+type EditableTransactionField = 'amount' | 'transactionId' | 'timestamp' | 'bankName' | 'confidence' | 'imageKey'
 
 type TransactionResponse = Omit<Transaction, 'amount'> & { amount: number }
 
@@ -31,7 +31,7 @@ export class TransactionsService {
 			...createTransactionDto,
 			amount: createTransactionDto.amount.toFixed(2),
 			timestamp: new Date(createTransactionDto.timestamp),
-			imageUrl: createTransactionDto.imageUrl ?? null,
+			imageKey: createTransactionDto.imageKey ?? null,
 		})
 
 		return this.transactionRepository.save(transaction)
@@ -144,7 +144,7 @@ export class TransactionsService {
 			{ header: 'Bank Name', key: 'bankName', width: 20 },
 			{ header: 'Confidence', key: 'confidence', width: 14 },
 			{ header: 'Is Duplicate', key: 'isDuplicate', width: 16 },
-			{ header: 'Image URL', key: 'imageUrl', width: 36 },
+			{ header: 'Image Key', key: 'imageKey', width: 36 },
 			{ header: 'Created At', key: 'createdAt', width: 28 },
 		]
 
@@ -159,7 +159,7 @@ export class TransactionsService {
 				bankName: item.bankName,
 				confidence: item.confidence,
 				isDuplicate: item.isDuplicate,
-				imageUrl: item.imageUrl ?? '',
+				imageKey: item.imageKey ?? '',
 				createdAt: item.createdAt.toISOString(),
 			})
 		})
@@ -198,7 +198,7 @@ export class TransactionsService {
 			timestamp: updateDto.timestamp === undefined ? undefined : new Date(updateDto.timestamp),
 			bankName: updateDto.bankName,
 			confidence: updateDto.confidence,
-			imageUrl: updateDto.imageUrl,
+			imageKey: updateDto.imageKey,
 		}
 	}
 
@@ -214,7 +214,7 @@ export class TransactionsService {
 	}
 
 	private getUpdateFields(dto: UpdateTransactionDto): EditableTransactionField[] {
-		const candidates: EditableTransactionField[] = ['amount', 'transactionId', 'timestamp', 'bankName', 'confidence', 'imageUrl']
+		const candidates: EditableTransactionField[] = ['amount', 'transactionId', 'timestamp', 'bankName', 'confidence', 'imageKey']
 
 		return candidates.filter((field) => dto[field as keyof UpdateTransactionDto] !== undefined)
 	}

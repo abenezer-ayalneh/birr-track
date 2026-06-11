@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { Ctx, On, Start, Update } from 'nestjs-telegraf'
 import { Context } from 'telegraf'
 
+import { WELCOME_MESSAGE } from './telegram.constants'
 import { TelegramService } from './telegram.service'
 
 @Injectable()
@@ -11,7 +12,7 @@ export class TelegramUpdateHandler {
 
 	@Start()
 	async start(@Ctx() ctx: Context) {
-		await ctx.reply('Welcome!')
+		await ctx.reply(WELCOME_MESSAGE)
 	}
 
 	@On('text')

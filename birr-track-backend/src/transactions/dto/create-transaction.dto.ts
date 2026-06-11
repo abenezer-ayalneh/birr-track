@@ -37,5 +37,5 @@ export class CreateTransactionDto {
 
 	@IsOptional()
 	@IsString()
-	imageUrl?: string
+	imageKey?: string
 }

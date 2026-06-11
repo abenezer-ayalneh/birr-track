@@ -1,18 +1,23 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm'
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm'
 
-import { Manager } from './manager.entity'
+export const BUSINESS_STATUSES = ['pending', 'active', 'rejected', 'suspended'] as const
+export type BusinessStatus = (typeof BUSINESS_STATUSES)[number]
 
 @Entity('businesses')
 export class Business {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
 
-	@Column({ type: 'varchar', length: 255, unique: true })
+	/** Display label only — duplicates are allowed; nothing looks a Business up by name. */
+	@Column({ type: 'varchar', length: 255 })
 	name!: string
+
+	@Column({ type: 'varchar', length: 20, default: 'pending' })
+	status!: BusinessStatus
+
+	@Column({ type: 'uuid', nullable: true })
+	ownerUserId!: string | null
 
 	@CreateDateColumn({ type: 'timestamptz' })
 	createdAt!: Date
-
-	@OneToMany(() => Manager, (manager) => manager.business)
-	managers!: Manager[]
 }
