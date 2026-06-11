@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Workbook } from 'exceljs'
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm'
 
+import { JwtPayload } from '../auth/auth.service'
 import { CreateTransactionDto } from './dto/create-transaction.dto'
 import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto'
 import { TransactionSummaryDto } from './dto/transaction-summary.dto'
@@ -12,7 +13,7 @@ import { Transaction } from './entities/transaction.entity'
 
 type EditableTransactionField = 'amount' | 'transactionId' | 'timestamp' | 'bankName' | 'confidence' | 'imageKey'
 
-type TransactionResponse = Omit<Transaction, 'amount'> & { amount: number }
+type TransactionResponse = Omit<Transaction, 'amount'> & { amount: number | null }
 
 @Injectable()
 export class TransactionsService {
@@ -37,17 +38,24 @@ export class TransactionsService {
 		return this.transactionRepository.save(transaction)
 	}
 
-	async findDuplicate(transactionId: string, amount: number, timestamp: string): Promise<Transaction | null> {
-		return this.transactionRepository.findOne({
-			where: {
-				transactionId,
-				amount: amount.toFixed(2),
-				timestamp: new Date(timestamp),
-			},
-		})
+	async findDuplicate(transactionId: string, amount: number, timestamp: string, businessId?: string): Promise<Transaction | null> {
+		const query = this.transactionRepository
+			.createQueryBuilder('transaction')
+			.where('transaction.transactionId = :transactionId', { transactionId })
+			.andWhere('transaction.amount = :amount', { amount: amount.toFixed(2) })
+			.andWhere('transaction.timestamp = :timestamp', { timestamp: new Date(timestamp) })
+
+		if (businessId) {
+			query.andWhere('transaction.businessId = :businessId', { businessId })
+		}
+
+		return query.getOne()
 	}
 
-	async findAll(queryDto: GetTransactionsQueryDto): Promise<{
+	async findAll(
+		queryDto: GetTransactionsQueryDto,
+		auth: JwtPayload,
+	): Promise<{
 		page: number
 		limit: number
 		total: number
@@ -56,7 +64,7 @@ export class TransactionsService {
 		const page = queryDto.page
 		const limit = queryDto.getEffectiveLimit()
 
-		const query = this.buildFilteredQuery(queryDto)
+		const query = this.buildFilteredQuery(queryDto, auth)
 			.orderBy('transaction.createdAt', 'DESC')
 			.skip((page - 1) * limit)
 			.take(limit)
@@ -70,8 +78,20 @@ export class TransactionsService {
 		}
 	}
 
-	async getSummary(queryDto: GetTransactionsQueryDto): Promise<TransactionSummaryDto> {
-		const query = this.buildFilteredQuery(queryDto)
+	async findById(id: string, auth: JwtPayload): Promise<TransactionResponse> {
+		const query = this.transactionRepository.createQueryBuilder('transaction').where('transaction.id = :id', { id })
+		this.applyAuthScope(query, auth)
+
+		const transaction = await query.getOne()
+		if (!transaction) {
+			throw new NotFoundException(`Transaction ${id} not found`)
+		}
+
+		return this.toResponse(transaction)
+	}
+
+	async getSummary(queryDto: GetTransactionsQueryDto, auth: JwtPayload): Promise<TransactionSummaryDto> {
+		const query = this.buildFilteredQuery(queryDto, auth)
 		const aggregateResult = await query
 			.select('COALESCE(SUM(transaction.amount), 0)', 'totalRevenue')
 			.addSelect('COUNT(transaction.id)', 'transactionCount')
@@ -83,16 +103,21 @@ export class TransactionsService {
 		}
 	}
 
-	async update(id: string, updateTransactionDto: UpdateTransactionDto, editedBy: string): Promise<TransactionResponse> {
+	async update(id: string, updateTransactionDto: UpdateTransactionDto, auth: JwtPayload): Promise<TransactionResponse> {
 		const existing = await this.transactionRepository.findOne({ where: { id } })
 		if (!existing) {
 			throw new NotFoundException(`Transaction ${id} not found`)
 		}
 
+		// Verify access
+		this.verifyTransactionAccess(existing, auth)
+
 		const fieldsToUpdate = this.getUpdateFields(updateTransactionDto)
 		if (fieldsToUpdate.length === 0) {
 			return this.toResponse(existing)
 		}
+
+		const editedBy = auth.userId ?? 'system'
 
 		const updated = await this.dataSource.transaction(async (manager) => {
 			for (const field of fieldsToUpdate) {
@@ -129,8 +154,8 @@ export class TransactionsService {
 		return this.toResponse(updated)
 	}
 
-	async export(queryDto: GetTransactionsQueryDto): Promise<Buffer> {
-		const transactions = await this.buildFilteredQuery(queryDto).orderBy('transaction.createdAt', 'DESC').getMany()
+	async export(queryDto: GetTransactionsQueryDto, auth: JwtPayload): Promise<Buffer> {
+		const transactions = await this.buildFilteredQuery(queryDto, auth).orderBy('transaction.createdAt', 'DESC').getMany()
 
 		const workbook = new Workbook()
 		const worksheet = workbook.addWorksheet('Transactions')
@@ -153,10 +178,10 @@ export class TransactionsService {
 				id: item.id,
 				telegramUserId: item.telegramUserId,
 				telegramName: item.telegramName,
-				amount: Number(item.amount),
-				transactionId: item.transactionId,
-				timestamp: item.timestamp.toISOString(),
-				bankName: item.bankName,
+				amount: item.amount ? Number(item.amount) : '',
+				transactionId: item.transactionId ?? '',
+				timestamp: item.timestamp ? item.timestamp.toISOString() : '',
+				bankName: item.bankName ?? '',
 				confidence: item.confidence,
 				isDuplicate: item.isDuplicate,
 				imageKey: item.imageKey ?? '',
@@ -167,8 +192,10 @@ export class TransactionsService {
 		return Buffer.from(await workbook.xlsx.writeBuffer())
 	}
 
-	private buildFilteredQuery(queryDto: GetTransactionsQueryDto): SelectQueryBuilder<Transaction> {
+	private buildFilteredQuery(queryDto: GetTransactionsQueryDto, auth: JwtPayload): SelectQueryBuilder<Transaction> {
 		const query = this.transactionRepository.createQueryBuilder('transaction')
+
+		this.applyAuthScope(query, auth)
 
 		if (queryDto.startDate) {
 			query.andWhere('transaction.timestamp >= :startDate', {
@@ -189,6 +216,44 @@ export class TransactionsService {
 		}
 
 		return query
+	}
+
+	private applyAuthScope(query: SelectQueryBuilder<Transaction>, auth: JwtPayload): void {
+		if (auth.role === 'platform_owner') {
+			return // Platform owner sees all
+		}
+
+		if (!auth.businessId) {
+			// Shouldn't happen due to controller validation, but be defensive
+			query.andWhere('1=0') // Return no results
+			return
+		}
+
+		query.andWhere('transaction.businessId = :businessId', { businessId: auth.businessId })
+
+		// Waiters see only their own transactions
+		if (auth.role === 'waiter' && auth.userId) {
+			query.andWhere('transaction.userId = :userId', { userId: auth.userId })
+		}
+	}
+
+	private verifyTransactionAccess(transaction: Transaction, auth: JwtPayload): void {
+		if (auth.role === 'platform_owner') {
+			return // Platform owner can edit all
+		}
+
+		if (auth.role === 'waiter') {
+			// Waiters can only edit their own
+			if (transaction.userId !== auth.userId) {
+				throw new NotFoundException(`Transaction not found`)
+			}
+			return
+		}
+
+		// Managers and owners can edit within their business
+		if (transaction.businessId !== auth.businessId) {
+			throw new NotFoundException(`Transaction not found`)
+		}
 	}
 
 	private prepareUpdatePayload(updateDto: UpdateTransactionDto): Partial<Transaction> {
@@ -222,7 +287,7 @@ export class TransactionsService {
 	private toResponse(item: Transaction): TransactionResponse {
 		return {
 			...item,
-			amount: Number(item.amount),
+			amount: item.amount ? Number(item.amount) : null,
 		}
 	}
 }
