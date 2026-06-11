@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { TelegrafModule } from 'nestjs-telegraf'
 
 import { QueueModule } from '../queue/queue.module'
+import { RateLimitModule } from '../shared/rate-limit/rate-limit.module'
 import { TELEGRAM_BOT_NAME } from './telegram.constants'
 import { TelegramController } from './telegram.controller'
 import { TelegramService } from './telegram.service'
@@ -12,6 +13,7 @@ import { TelegramUpdateHandler } from './telegram.update'
 	imports: [
 		ConfigModule,
 		QueueModule,
+		RateLimitModule,
 		TelegrafModule.forRootAsync({
 			imports: [ConfigModule],
 			botName: TELEGRAM_BOT_NAME,

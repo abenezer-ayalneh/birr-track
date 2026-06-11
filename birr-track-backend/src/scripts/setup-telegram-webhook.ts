@@ -2,6 +2,8 @@ import 'dotenv/config'
 
 import axios from 'axios'
 
+import { DEFAULT_TELEGRAM_WEBHOOK_SECRET } from '../telegram/telegram.constants'
+
 const TELEGRAM_API_BASE = 'https://api.telegram.org'
 
 type TelegramApiResponse<T> = {
@@ -24,7 +26,7 @@ function normalizeUrl(value: string): string {
 
 async function main(): Promise<void> {
 	const token = getRequiredEnv('TELEGRAM_BOT_TOKEN')
-	const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || 'default-webhook-secret'
+	const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || DEFAULT_TELEGRAM_WEBHOOK_SECRET
 	const baseUrl = normalizeUrl(process.env.TELEGRAM_WEBHOOK_BASE_URL?.trim() || process.env.APP_BASE_URL?.trim() || '')
 
 	if (!baseUrl) {
@@ -37,6 +39,7 @@ async function main(): Promise<void> {
 
 	const setResponse = await axios.post<TelegramApiResponse<true>>(setWebhookUrl, {
 		url: webhookUrl,
+		secret_token: secret,
 		drop_pending_updates: true,
 	})
 

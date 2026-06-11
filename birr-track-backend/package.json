@@ -25,11 +25,13 @@
 		"db:migrate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli -d src/database/data-source.ts migration:run",
 		"smoke:e2e:setup": "npm run db:migrate && npm run smoke:e2e:wait",
 		"telegram:webhook": "ts-node src/scripts/setup-telegram-webhook.ts",
+		"scrub:image-urls": "ts-node src/scripts/scrub-telegram-image-urls.ts",
 		"pretty-quick": "pretty-quick --staged",
 		"lint-staged": "lint-staged",
 		"prepare": "husky"
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1066.0",
 		"@nestjs/common": "^11.1.19",
 		"@nestjs/config": "^4.0.4",
 		"@nestjs/core": "^11.1.19",

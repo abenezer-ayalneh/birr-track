@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
 
 import { ImageProcessingJobPayload } from '../queue/types/image-processing-job.type'
+import { StorageService } from '../storage/storage.service'
 import { CreateTransactionDto } from '../transactions/dto/create-transaction.dto'
 import { TransactionsService } from '../transactions/transactions.service'
 import { TransactionEventsGateway } from '../websocket/transaction-events.gateway'
@@ -21,6 +22,7 @@ export class ProcessingService {
 	constructor(
 		private readonly configService: ConfigService,
 		private readonly vlmService: VlmService,
+		private readonly storageService: StorageService,
 		private readonly transactionsService: TransactionsService,
 		private readonly transactionEventsGateway: TransactionEventsGateway,
 	) {}
@@ -40,6 +42,9 @@ export class ProcessingService {
 
 		const duplicate = await this.transactionsService.findDuplicate(parsed.transactionId, parsed.amount, parsed.timestamp)
 
+		// Persist the object key, never the Telegram download URL — that URL embeds the bot token and expires
+		const imageKey = await this.storageService.uploadReceiptImage(imageBuffer, payload.telegramUserId)
+
 		const createDto: CreateTransactionDto = {
 			telegramUserId: payload.telegramUserId,
 			telegramName: payload.telegramName,
@@ -49,7 +54,7 @@ export class ProcessingService {
 			bankName: parsed.bankName,
 			confidence: parsed.confidence,
 			isDuplicate: Boolean(duplicate),
-			imageUrl: fileUrl,
+			imageKey,
 		}
 
 		const transaction = await this.transactionsService.create(createDto)

@@ -2,6 +2,8 @@ import 'dotenv/config'
 
 import axios from 'axios'
 
+import { DEFAULT_TELEGRAM_WEBHOOK_SECRET, TELEGRAM_SECRET_TOKEN_HEADER } from '../telegram/telegram.constants'
+
 const DEFAULT_TIMEOUT_MS = 120000
 const POLL_INTERVAL_MS = 3000
 const HEALTH_POLL_INTERVAL_MS = 2000
@@ -54,7 +56,7 @@ async function main(): Promise<void> {
 	const waitForBackendMs = Number(getEnv('SMOKE_WAIT_FOR_BACKEND_MS') ?? '0')
 	const fileId = getRequiredEnv('SMOKE_TELEGRAM_FILE_ID')
 	const timeoutMs = Number(getEnv('SMOKE_TIMEOUT_MS') || DEFAULT_TIMEOUT_MS)
-	const secret = getEnv('TELEGRAM_WEBHOOK_SECRET') || 'default-webhook-secret'
+	const secret = getEnv('TELEGRAM_WEBHOOK_SECRET') || DEFAULT_TELEGRAM_WEBHOOK_SECRET
 	const telegramUserId = `99${Date.now()}`
 	const telegramName = 'Smoke Test User'
 	const startTime = Date.now()
@@ -97,23 +99,29 @@ async function main(): Promise<void> {
 		await sleep(HEALTH_POLL_INTERVAL_MS)
 	}
 
-	await axios.post(`${appBaseUrl}/telegram/webhook/${secret}`, {
-		message: {
-			from: {
-				id: Number(telegramUserId),
-				first_name: 'Smoke',
-				last_name: 'Test',
-			},
-			photo: [
-				{
-					file_id: fileId,
-					file_unique_id: 'smoke-file-uid',
-					width: 1280,
-					height: 960,
+	await axios.post(
+		`${appBaseUrl}/telegram/webhook/${secret}`,
+		{
+			message: {
+				from: {
+					id: Number(telegramUserId),
+					first_name: 'Smoke',
+					last_name: 'Test',
 				},
-			],
+				photo: [
+					{
+						file_id: fileId,
+						file_unique_id: 'smoke-file-uid',
+						width: 1280,
+						height: 960,
+					},
+				],
+			},
 		},
-	})
+		{
+			headers: { [TELEGRAM_SECRET_TOKEN_HEADER]: secret },
+		},
+	)
 
 	console.log('Webhook accepted. Polling transactions endpoint...')
 
