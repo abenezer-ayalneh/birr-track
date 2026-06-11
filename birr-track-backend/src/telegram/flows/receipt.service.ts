@@ -72,6 +72,7 @@ export class ReceiptService {
 			telegramUserId,
 			telegramName: displayName,
 			fileId: selectedPhoto.file_id,
+			fileUniqueId: selectedPhoto.file_unique_id,
 			businessId: ctx.state.business.id,
 			userId: ctx.state.user.id,
 		})

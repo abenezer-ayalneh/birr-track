@@ -7,17 +7,17 @@ import { ProcessingService } from '../processing/processing.service'
 import { DEFAULT_REDIS_PORT, IMAGE_PROCESSING_QUEUE } from './queue.constants'
 import { ImageProcessingJobPayload } from './types/image-processing-job.type'
 
-function describeWorkerError(error: unknown): string {
-	if (error instanceof Error && error.message) {
-		return error.message
+function describeWorkerError(err: unknown): string {
+	if (err instanceof Error && err.message) {
+		return err.message
 	}
-	if (typeof error === 'string') {
-		return error
+	if (typeof err === 'string') {
+		return err
 	}
 	try {
-		return JSON.stringify(error)
+		return JSON.stringify(err)
 	} catch {
-		return String(error)
+		return '(unserializable error)'
 	}
 }
 
@@ -54,9 +54,9 @@ export class ImageProcessingWorker implements OnModuleInit, OnModuleDestroy {
 			this.logger.log(`Processed queue job ${job.id}`)
 		})
 
-		this.worker.on('failed', (job, error) => {
-			const description = describeWorkerError(error)
-			const stack = error instanceof Error ? error.stack : undefined
+		this.worker.on('failed', (job, err) => {
+			const description = describeWorkerError(err)
+			const stack = err instanceof Error ? err.stack : undefined
 			this.logger.error(`Queue job ${job?.id ?? 'unknown'} failed: ${description}`, stack)
 		})
 	}

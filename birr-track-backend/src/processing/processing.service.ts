@@ -6,6 +6,7 @@ import { ImageProcessingJobPayload } from '../queue/types/image-processing-job.t
 import { StorageService } from '../storage/storage.service'
 import { CreateTransactionDto } from '../transactions/dto/create-transaction.dto'
 import { TransactionsService } from '../transactions/transactions.service'
+import { UsersService } from '../users/users.service'
 import { TransactionEventsGateway } from '../websocket/transaction-events.gateway'
 import { VlmService } from './vlm.service'
 
@@ -25,43 +26,77 @@ export class ProcessingService {
 		private readonly storageService: StorageService,
 		private readonly transactionsService: TransactionsService,
 		private readonly transactionEventsGateway: TransactionEventsGateway,
+		private readonly usersService: UsersService,
 	) {}
 
 	async processImageJob(payload: ImageProcessingJobPayload): Promise<void> {
 		this.logger.log(`Processing receipt for telegram user ${payload.telegramUserId}`)
 
-		const fileUrl = await this.resolveTelegramFileDownloadUrl(payload.fileId)
-		const imageBuffer = await this.downloadTelegramFileFromUrl(fileUrl)
-
-		const parsed = await this.vlmService.extract(imageBuffer)
-
-		if (parsed.amount === null || parsed.transactionId === null || parsed.timestamp === null || parsed.bankName === null) {
-			this.logger.warn(`Skipping save: VLM returned incomplete fields for user ${payload.telegramUserId}`)
+		const user = await this.usersService.findByTelegramId(payload.telegramUserId)
+		if (!user || !user.businessId) {
+			this.logger.warn(`No active business membership for user ${payload.telegramUserId}; skipping processing`)
 			return
 		}
 
-		const duplicate = await this.transactionsService.findDuplicate(parsed.transactionId, parsed.amount, parsed.timestamp)
+		let fileUrl: string
+		let imageBuffer: Buffer
+		let imageKey: string | null = null
+		let parsed: { amount: number | null; transactionId: string | null; timestamp: string | null; bankName: string | null; confidence: number } = {
+			amount: null,
+			transactionId: null,
+			timestamp: null,
+			bankName: null,
+			confidence: 0,
+		}
 
-		// Persist the object key, never the Telegram download URL — that URL embeds the bot token and expires
-		const imageKey = await this.storageService.uploadReceiptImage(imageBuffer, payload.telegramUserId)
+		try {
+			fileUrl = await this.resolveTelegramFileDownloadUrl(payload.fileId)
+			imageBuffer = await this.downloadTelegramFileFromUrl(fileUrl)
+			imageKey = await this.storageService.uploadReceiptImage(imageBuffer, payload.telegramUserId)
+
+			parsed = await this.vlmService.extract(imageBuffer)
+		} catch (err: unknown) {
+			const errorMsg = err instanceof Error ? err.message : JSON.stringify(err)
+			this.logger.error(`VLM processing failed for user ${payload.telegramUserId}: ${errorMsg}`)
+		}
+
+		const isComplete = parsed.amount !== null && parsed.transactionId !== null && parsed.timestamp !== null && parsed.bankName !== null
+		const status = isComplete ? 'recorded' : 'needs_review'
+
+		let duplicate = false
+		if (isComplete && parsed.amount !== null && parsed.transactionId !== null && parsed.timestamp !== null) {
+			const existingDuplicate = await this.transactionsService.findDuplicate(user.businessId, parsed.transactionId, parsed.amount, parsed.timestamp)
+			duplicate = Boolean(existingDuplicate)
+		}
 
 		const createDto: CreateTransactionDto = {
 			telegramUserId: payload.telegramUserId,
 			telegramName: payload.telegramName,
-			amount: parsed.amount,
-			transactionId: parsed.transactionId,
-			timestamp: parsed.timestamp,
-			bankName: parsed.bankName,
+			businessId: user.businessId,
+			userId: user.id,
+			amount: parsed.amount ?? undefined,
+			transactionId: parsed.transactionId ?? undefined,
+			timestamp: parsed.timestamp ?? undefined,
+			bankName: parsed.bankName ?? undefined,
 			confidence: parsed.confidence,
-			isDuplicate: Boolean(duplicate),
-			imageKey,
+			isDuplicate: duplicate,
+			imageKey: imageKey ?? undefined,
+			fileUniqueId: payload.fileUniqueId,
 		}
 
-		const transaction = await this.transactionsService.create(createDto)
-		this.transactionEventsGateway.emitTransactionNew({
-			...transaction,
-			amount: Number(transaction.amount),
-		})
+		try {
+			const transaction = await this.transactionsService.create(createDto, status)
+			this.transactionEventsGateway.emitTransactionNew({
+				...transaction,
+				amount: transaction.amount !== null ? Number(transaction.amount) : null,
+			})
+		} catch (error: unknown) {
+			if (error instanceof Error && error.message.includes('duplicate key')) {
+				this.logger.log(`Idempotent redelivery detected for file_unique_id ${payload.fileUniqueId}; transaction already exists`)
+				return
+			}
+			throw error
+		}
 	}
 
 	private async downloadTelegramFileFromUrl(fileUrl: string): Promise<Buffer> {

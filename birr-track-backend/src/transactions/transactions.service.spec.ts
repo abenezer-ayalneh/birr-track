@@ -1,0 +1,190 @@
+/* eslint-disable @typescript-eslint/unbound-method */
+import { Test, TestingModule } from '@nestjs/testing'
+import { getRepositoryToken } from '@nestjs/typeorm'
+import { DataSource, Repository } from 'typeorm'
+
+import { CreateTransactionDto } from './dto/create-transaction.dto'
+import { EditLog } from './entities/edit-log.entity'
+import { Transaction } from './entities/transaction.entity'
+import { TransactionsService } from './transactions.service'
+
+describe('TransactionsService', () => {
+	let service: TransactionsService
+	let transactionRepository: Repository<Transaction>
+
+	const mockTransaction: Transaction = {
+		id: 'txn-1',
+		telegramUserId: '123456789',
+		telegramName: 'John Waiter',
+		businessId: 'biz-1',
+		userId: 'user-1',
+		status: 'recorded',
+		amount: '100.00',
+		transactionId: 'ABC123',
+		timestamp: new Date('2024-01-01T12:00:00Z'),
+		bankName: 'CBE',
+		confidence: 0.95,
+		isDuplicate: false,
+		editedByUploader: false,
+		imageKey: 'receipts/biz-1/img-123',
+		fileUniqueId: 'unique-123',
+		createdAt: new Date(),
+		business: null,
+		user: null,
+		editLogs: [],
+	}
+
+	beforeEach(async () => {
+		const module: TestingModule = await Test.createTestingModule({
+			providers: [
+				TransactionsService,
+				{
+					provide: getRepositoryToken(Transaction),
+					useValue: {
+						create: jest.fn(),
+						save: jest.fn(),
+						findOne: jest.fn(),
+						createQueryBuilder: jest.fn(),
+					},
+				},
+				{
+					provide: getRepositoryToken(EditLog),
+					useValue: {
+						create: jest.fn(),
+						save: jest.fn(),
+					},
+				},
+				{
+					provide: DataSource,
+					useValue: {
+						transaction: jest.fn(),
+					},
+				},
+			],
+		}).compile()
+
+		service = module.get<TransactionsService>(TransactionsService)
+		transactionRepository = module.get<Repository<Transaction>>(getRepositoryToken(Transaction))
+	})
+
+	describe('create', () => {
+		it('should create a transaction with all fields present (recorded status)', async () => {
+			const createDto: CreateTransactionDto = {
+				telegramUserId: '123456789',
+				telegramName: 'John Waiter',
+				businessId: 'biz-1',
+				userId: 'user-1',
+				amount: 100.5,
+				transactionId: 'ABC123',
+				timestamp: '2024-01-01T12:00:00Z',
+				bankName: 'CBE',
+				confidence: 0.95,
+				isDuplicate: false,
+				imageKey: 'receipts/biz-1/img-123',
+				fileUniqueId: 'unique-123',
+			}
+
+			jest.spyOn(transactionRepository, 'create').mockReturnValue(mockTransaction)
+			jest.spyOn(transactionRepository, 'save').mockResolvedValue(mockTransaction)
+
+			const result = await service.create(createDto, 'recorded')
+
+			expect(transactionRepository.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					telegramUserId: '123456789',
+					telegramName: 'John Waiter',
+					businessId: 'biz-1',
+					userId: 'user-1',
+					amount: '100.50',
+					status: 'recorded',
+				}),
+			)
+			expect(result.status).toBe('recorded')
+			expect(result).toEqual(mockTransaction)
+		})
+
+		it('should create a transaction with partial fields (needs_review status)', async () => {
+			const partialTxn: Transaction = {
+				...mockTransaction,
+				status: 'needs_review',
+				amount: null,
+				transactionId: null,
+			}
+
+			const createDto: CreateTransactionDto = {
+				telegramUserId: '123456789',
+				telegramName: 'John Waiter',
+				businessId: 'biz-1',
+				userId: 'user-1',
+				confidence: 0.5,
+				isDuplicate: false,
+				fileUniqueId: 'unique-456',
+			}
+
+			jest.spyOn(transactionRepository, 'create').mockReturnValue(partialTxn)
+			jest.spyOn(transactionRepository, 'save').mockResolvedValue(partialTxn)
+
+			const result = await service.create(createDto, 'needs_review')
+
+			expect(result.status).toBe('needs_review')
+			expect(result.amount).toBeNull()
+			expect(result.transactionId).toBeNull()
+		})
+
+		it('should default to recorded status when not specified', async () => {
+			jest.spyOn(transactionRepository, 'create').mockReturnValue(mockTransaction)
+			jest.spyOn(transactionRepository, 'save').mockResolvedValue(mockTransaction)
+
+			const createDto: CreateTransactionDto = {
+				telegramUserId: '123456789',
+				telegramName: 'John',
+				businessId: 'biz-1',
+				userId: 'user-1',
+				amount: 50,
+				transactionId: 'XYZ789',
+				timestamp: '2024-01-02T12:00:00Z',
+				bankName: 'CBE',
+				confidence: 0.9,
+				isDuplicate: false,
+			}
+
+			await service.create(createDto)
+
+			expect(transactionRepository.create).toHaveBeenCalledWith(expect.objectContaining({ status: 'recorded' }))
+		})
+	})
+
+	describe('findDuplicate', () => {
+		it('should find a duplicate scoped by businessId', async () => {
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(mockTransaction)
+
+			const result = await service.findDuplicate('biz-1', 'ABC123', 100.0, '2024-01-01T12:00:00Z')
+
+			expect(transactionRepository.findOne).toHaveBeenCalledWith({
+				where: {
+					businessId: 'biz-1',
+					transactionId: 'ABC123',
+					amount: '100.00',
+					timestamp: new Date('2024-01-01T12:00:00Z'),
+				},
+			})
+			expect(result).toEqual(mockTransaction)
+		})
+
+		it('should not find duplicate from different business', async () => {
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(null)
+
+			const result = await service.findDuplicate('biz-2', 'ABC123', 100.0, '2024-01-01T12:00:00Z')
+
+			expect(result).toBeNull()
+		})
+
+		it('should not find duplicate with different amount', async () => {
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(null)
+
+			const result = await service.findDuplicate('biz-1', 'ABC123', 200.0, '2024-01-01T12:00:00Z')
+
+			expect(result).toBeNull()
+		})
+	})
+})
