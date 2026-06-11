@@ -6,11 +6,15 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 
 import AppController from './app.controller'
 import AppService from './app.service'
+import { AuthModule } from './auth/auth.module'
+import { OptionalJwtAuthGuard } from './auth/guards/optional-jwt-auth.guard'
+import { RolesGuard } from './auth/guards/roles.guard'
 import { BusinessesModule } from './businesses/businesses.module'
 import { createTypeOrmConfig } from './config/typeorm.config'
 import { InvitesModule } from './invites/invites.module'
 import { ProcessingModule } from './processing/processing.module'
 import { QueueModule } from './queue/queue.module'
+import { RegistrationsModule } from './registrations/registrations.module'
 import GlobalExceptionFilter from './shared/filters/global-exception.filter'
 import { ContextAwareThrottlerGuard } from './shared/guards/context-aware-throttler.guard'
 import { TelegramModule } from './telegram/telegram.module'
@@ -35,6 +39,7 @@ import { WebsocketModule } from './websocket/websocket.module'
 			inject: [ConfigService],
 			useFactory: (configService: ConfigService) => createTypeOrmConfig(configService),
 		}),
+		AuthModule,
 		TelegramModule,
 		QueueModule,
 		ProcessingModule,
@@ -42,6 +47,7 @@ import { WebsocketModule } from './websocket/websocket.module'
 		BusinessesModule,
 		UsersModule,
 		InvitesModule,
+		RegistrationsModule,
 		WebsocketModule,
 	],
 	controllers: [AppController],
@@ -51,6 +57,14 @@ import { WebsocketModule } from './websocket/websocket.module'
 		{
 			provide: APP_GUARD,
 			useClass: ContextAwareThrottlerGuard,
+		},
+		{
+			provide: APP_GUARD,
+			useClass: OptionalJwtAuthGuard,
+		},
+		{
+			provide: APP_GUARD,
+			useClass: RolesGuard,
 		},
 		{ provide: APP_FILTER, useClass: GlobalExceptionFilter },
 	],

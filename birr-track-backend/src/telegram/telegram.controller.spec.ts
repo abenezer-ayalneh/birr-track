@@ -1,7 +1,9 @@
 import { UnauthorizedException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
+import { getBotToken } from 'nestjs-telegraf'
 import { Telegraf } from 'telegraf'
 
+import { TELEGRAM_BOT_NAME } from './telegram.constants'
 import { TelegramController } from './telegram.controller'
 
 describe('TelegramController', () => {
@@ -24,7 +26,7 @@ describe('TelegramController', () => {
 			controllers: [TelegramController],
 		})
 			.useMocker((token) => {
-				if (token === 'Birr Track Bot') {
+				if (token === getBotToken(TELEGRAM_BOT_NAME)) {
 					return mockTelegrafBot as unknown as Telegraf
 				}
 				if (token && typeof token === 'function' && token.name === 'ConfigService') {

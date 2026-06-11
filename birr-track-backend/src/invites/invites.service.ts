@@ -101,6 +101,30 @@ export class InvitesService {
 		return this.inviteRepository.save(invite)
 	}
 
+	async revokeByIdAndBusiness(inviteId: string, businessId: string): Promise<Invite> {
+		const invite = await this.inviteRepository.findOne({ where: { id: inviteId } })
+		if (!invite) {
+			throw new NotFoundException(`Invite ${inviteId} not found`)
+		}
+		if (invite.businessId !== businessId) {
+			throw new NotFoundException(`Invite ${inviteId} not found in this business`)
+		}
+		if (invite.status !== 'pending') {
+			throw new ConflictException(`Invite ${inviteId} is ${invite.status}, only pending invites can be revoked`)
+		}
+
+		invite.status = 'revoked'
+		return this.inviteRepository.save(invite)
+	}
+
+	async getPendingInvitesByBusiness(businessId: string): Promise<Invite[]> {
+		return this.inviteRepository.find({
+			where: { businessId, status: 'pending' },
+			relations: ['createdBy'],
+			order: { createdAt: 'DESC' },
+		})
+	}
+
 	/** Marks all pending Invites past their expiry as expired; returns how many were affected. */
 	async expirePending(): Promise<number> {
 		const result = await this.inviteRepository.update({ status: 'pending', expiresAt: LessThanOrEqual(new Date()) }, { status: 'expired' })

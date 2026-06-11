@@ -7,6 +7,7 @@ import { Message, User as TelegramUser } from 'telegraf/types'
 import { BusinessesService } from '../../businesses/businesses.service'
 import { Business } from '../../businesses/entities/business.entity'
 import { InvitesService } from '../../invites/invites.service'
+import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
 import { INVITE_ROLE_BUTTONS, REGISTER_OR_INVITE_MESSAGE, REGISTER_SUCCESS_MESSAGE, WELCOME_MESSAGE_REGISTERED } from '../telegram.constants'
@@ -54,7 +55,7 @@ export class ConversationService {
 			try {
 				await ctx.telegram.sendMessage(inviter.telegramUserId, notifyMsg)
 			} catch (err) {
-				this.logger.error(`Failed to notify inviter ${inviter.id}: ${String(err)}`)
+				this.logger.error(`Failed to notify inviter ${inviter.id}: ${describeError(err)}`)
 			}
 
 			return
@@ -208,7 +209,7 @@ export class ConversationService {
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : 'Failed to create invite'
 			await ctx.reply(`Error: ${errorMsg}`, Markup.removeKeyboard())
-			this.logger.error(`Failed to create invite: ${String(err)}`)
+			this.logger.error(`Failed to create invite: ${describeError(err)}`)
 		}
 	}
 
@@ -251,7 +252,7 @@ export class ConversationService {
 			await ctx.telegram.sendMessage(platformOwnerId, message, Markup.inlineKeyboard([[approveBtn, rejectBtn]]))
 			this.logger.log(`Notified Platform Owner of business registration ${business.id}`)
 		} catch (err) {
-			this.logger.error(`Failed to notify Platform Owner: ${String(err)}`)
+			this.logger.error(`Failed to notify Platform Owner: ${describeError(err)}`)
 		}
 	}
 }

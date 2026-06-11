@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method */
 import { ConflictException, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Test, TestingModule } from '@nestjs/testing'
@@ -138,8 +138,8 @@ describe('InvitesService', () => {
 				createdByUserId: 'user-1',
 			})
 
-			const savedInvite = (inviteRepository.save as jest.Mock).mock.calls[0][0]
-			expect(savedInvite.expiresAt.getTime()).toBeGreaterThan(Date.now() + 13 * 24 * 60 * 60 * 1000)
+			const createdInvite = (inviteRepository.create as jest.Mock).mock.calls[0][0] as { expiresAt: Date }
+			expect(createdInvite.expiresAt.getTime()).toBeGreaterThan(Date.now() + 13 * 24 * 60 * 60 * 1000)
 		})
 	})
 
@@ -182,7 +182,7 @@ describe('InvitesService', () => {
 
 		it('should join the invitee to business with correct role', async () => {
 			const futureExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000)
-			const inviteToRedeem = { ...mockInvite, expiresAt: futureExpiry, role: 'manager' }
+			const inviteToRedeem = { ...mockInvite, expiresAt: futureExpiry, role: 'manager' as const }
 
 			jest.spyOn(inviteRepository, 'findOne').mockResolvedValue(inviteToRedeem)
 			jest.spyOn(usersService, 'joinBusiness').mockResolvedValue({ ...mockUser, role: 'manager' })

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Ctx, On, Update } from 'nestjs-telegraf'
 
 import { BusinessesService } from '../../businesses/businesses.service'
+import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
 
@@ -60,7 +61,7 @@ export class RegistrationService {
 					try {
 						await ctx.telegram.sendMessage(owner.telegramUserId, ownerMsg)
 					} catch (err) {
-						this.logger.error(`Failed to notify owner ${owner.id}: ${String(err)}`)
+						this.logger.error(`Failed to notify owner ${owner.id}: ${describeError(err)}`)
 					}
 				}
 			}
@@ -70,7 +71,7 @@ export class RegistrationService {
 
 			this.logger.log(`Business ${businessId} approved by Platform Owner`)
 		} catch (err) {
-			this.logger.error(`Error approving business ${businessId}: ${String(err)}`)
+			this.logger.error(`Error approving business ${businessId}: ${describeError(err)}`)
 			await ctx.answerCbQuery('Failed to approve.')
 		}
 	}
@@ -110,7 +111,7 @@ export class RegistrationService {
 					try {
 						await ctx.telegram.sendMessage(owner.telegramUserId, rejectionMsg)
 					} catch (err) {
-						this.logger.error(`Failed to notify rejected owner ${owner.id}: ${String(err)}`)
+						this.logger.error(`Failed to notify rejected owner ${owner.id}: ${describeError(err)}`)
 					}
 				}
 			}
@@ -120,7 +121,7 @@ export class RegistrationService {
 
 			this.logger.log(`Business ${businessId} rejected by Platform Owner`)
 		} catch (err) {
-			this.logger.error(`Error rejecting business ${businessId}: ${String(err)}`)
+			this.logger.error(`Error rejecting business ${businessId}: ${describeError(err)}`)
 			await ctx.answerCbQuery('Failed to reject.')
 		}
 	}

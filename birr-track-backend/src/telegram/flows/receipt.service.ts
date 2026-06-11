@@ -5,6 +5,7 @@ import { Message } from 'telegraf/types'
 
 import { QueueService } from '../../queue/queue.service'
 import { RateLimitService } from '../../shared/rate-limit/rate-limit.service'
+import { describeError } from '../../shared/utils/describe-error.util'
 import { IdentifiedContext } from '../services/identity.service'
 import { PHOTO_RATE_LIMIT_KEY_PREFIX, THROTTLED_MESSAGE } from '../telegram.constants'
 
@@ -110,7 +111,7 @@ export class ReceiptService {
 				timeout: setTimeout(() => {
 					const count = newAck.count
 					ctx.reply(`Received ${count} receipt${count > 1 ? 's' : ''} ✓`).catch((err) => {
-						this.logger.error(`Failed to send media group ack: ${String(err)}`)
+						this.logger.error(`Failed to send media group ack: ${describeError(err)}`)
 					})
 					this.mediaGroupAcks.delete(key)
 				}, MEDIA_GROUP_ACK_DELAY_MS),
@@ -144,7 +145,7 @@ export class ReceiptService {
 				this.logger.log(`Pinged waiter ${telegramUserId} for review`)
 			}
 		} catch (err) {
-			this.logger.error(`Failed to ping waiter ${telegramUserId}: ${String(err)}`)
+			this.logger.error(`Failed to ping waiter ${telegramUserId}: ${describeError(err)}`)
 		}
 	}
 }

@@ -45,6 +45,14 @@ export class UsersService {
 		return this.userRepository.findOne({ where: { id, removedAt: IsNull() } })
 	}
 
+	/** Get all active staff members in a business. */
+	async getBusinessStaff(businessId: string): Promise<User[]> {
+		return this.userRepository.find({
+			where: { businessId, removedAt: IsNull() },
+			order: { role: 'DESC', displayName: 'ASC' },
+		})
+	}
+
 	isActiveMemberOf(user: User | null, businessId: string): boolean {
 		return user !== null && user.removedAt === null && user.businessId === businessId
 	}

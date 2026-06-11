@@ -71,7 +71,7 @@ async function main(): Promise<void> {
 	console.log(`- Timeout: ${timeoutMs}ms`)
 
 	const healthWaitDeadline = Date.now() + waitForBackendMs
-	let healthStatus: number | null = null
+	let healthStatus: number | null
 
 	for (;;) {
 		healthStatus = null
