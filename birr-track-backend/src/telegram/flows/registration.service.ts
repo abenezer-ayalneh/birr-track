@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Ctx, On, Update } from 'nestjs-telegraf'
 
-import { BusinessesService } from '../../businesses/businesses.service'
+import { RegistrationsService } from '../../registrations/registrations.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
@@ -12,7 +12,7 @@ export class RegistrationService {
 	private readonly logger = new Logger(RegistrationService.name)
 
 	constructor(
-		private readonly businessesService: BusinessesService,
+		private readonly registrationsService: RegistrationsService,
 		private readonly usersService: UsersService,
 	) {}
 
@@ -40,37 +40,28 @@ export class RegistrationService {
 		}
 
 		try {
-			const business = await this.businessesService.findById(businessId)
-			if (!business) {
-				await ctx.answerCbQuery('Business not found.')
-				return
-			}
-
-			if (business.status === 'active') {
+			const { changed, business } = await this.registrationsService.approveBusiness(businessId)
+			if (!changed) {
 				await ctx.answerCbQuery('Already approved.')
 				return
 			}
 
-			business.status = 'active'
-			await this.businessesService.save(business)
-
-			if (business.ownerUserId) {
-				const owner = await this.usersService.findById(business.ownerUserId)
-				if (owner) {
-					const ownerMsg = `🎉 Your business "${business.name}" has been approved! You can now start accepting receipts from your team.`
-					try {
-						await ctx.telegram.sendMessage(owner.telegramUserId, ownerMsg)
-					} catch (err) {
-						this.logger.error(`Failed to notify owner ${owner.id}: ${describeError(err)}`)
-					}
-				}
-			}
+			const ownerMsg = `🎉 Your business "${business.name}" has been approved! You can now start accepting receipts from your team.`
+			await this.notifyRegistrant(ctx, business.ownerUserId, ownerMsg)
 
 			await ctx.editMessageText(`✅ Approved: ${business.name}`, { reply_markup: undefined })
 			await ctx.answerCbQuery('Business approved!')
 
 			this.logger.log(`Business ${businessId} approved by Platform Owner`)
 		} catch (err) {
+			if (err instanceof NotFoundException) {
+				await ctx.answerCbQuery('Business not found.')
+				return
+			}
+			if (err instanceof ConflictException) {
+				await ctx.answerCbQuery('Cannot approve this business.')
+				return
+			}
 			this.logger.error(`Error approving business ${businessId}: ${describeError(err)}`)
 			await ctx.answerCbQuery('Failed to approve.')
 		}
@@ -85,44 +76,47 @@ export class RegistrationService {
 		}
 
 		try {
-			const business = await this.businessesService.findById(businessId)
-			if (!business) {
-				await ctx.answerCbQuery('Business not found.')
-				return
-			}
-
-			if (business.status === 'rejected') {
+			const { changed, business } = await this.registrationsService.rejectBusiness(businessId)
+			if (!changed) {
 				await ctx.answerCbQuery('Already rejected.')
 				return
 			}
 
-			if (business.status === 'active') {
-				await ctx.answerCbQuery('Cannot reject an active business.')
-				return
-			}
-
-			business.status = 'rejected'
-			await this.businessesService.save(business)
-
-			if (business.ownerUserId) {
-				const owner = await this.usersService.findById(business.ownerUserId)
-				if (owner) {
-					const rejectionMsg = `Your business registration for "${business.name}" was not approved at this time. Please contact support for details.`
-					try {
-						await ctx.telegram.sendMessage(owner.telegramUserId, rejectionMsg)
-					} catch (err) {
-						this.logger.error(`Failed to notify rejected owner ${owner.id}: ${describeError(err)}`)
-					}
-				}
-			}
+			const rejectionMsg = `Your business registration for "${business.name}" was not approved at this time. Please contact support for details.`
+			await this.notifyRegistrant(ctx, business.ownerUserId, rejectionMsg)
 
 			await ctx.editMessageText(`❌ Rejected: ${business.name}`, { reply_markup: undefined })
 			await ctx.answerCbQuery('Business rejected.')
 
 			this.logger.log(`Business ${businessId} rejected by Platform Owner`)
 		} catch (err) {
+			if (err instanceof NotFoundException) {
+				await ctx.answerCbQuery('Business not found.')
+				return
+			}
+			if (err instanceof ConflictException) {
+				await ctx.answerCbQuery('Cannot reject this business.')
+				return
+			}
 			this.logger.error(`Error rejecting business ${businessId}: ${describeError(err)}`)
 			await ctx.answerCbQuery('Failed to reject.')
+		}
+	}
+
+	private async notifyRegistrant(ctx: IdentifiedContext, ownerUserId: string | null, message: string): Promise<void> {
+		if (!ownerUserId) {
+			return
+		}
+
+		const owner = await this.usersService.findById(ownerUserId)
+		if (!owner) {
+			return
+		}
+
+		try {
+			await ctx.telegram.sendMessage(owner.telegramUserId, message)
+		} catch (err) {
+			this.logger.error(`Failed to notify registrant ${owner.id}: ${describeError(err)}`)
 		}
 	}
 }

@@ -5,6 +5,7 @@ import { TelegrafModule } from 'nestjs-telegraf'
 import { BusinessesModule } from '../businesses/businesses.module'
 import { InvitesModule } from '../invites/invites.module'
 import { QueueModule } from '../queue/queue.module'
+import { RegistrationsModule } from '../registrations/registrations.module'
 import { RateLimitModule } from '../shared/rate-limit/rate-limit.module'
 import { UsersModule } from '../users/users.module'
 import { ConversationService } from './flows/conversation.service'
@@ -24,6 +25,7 @@ import { TelegramUpdateHandler } from './telegram.update'
 		UsersModule,
 		BusinessesModule,
 		InvitesModule,
+		RegistrationsModule,
 		TelegrafModule.forRootAsync({
 			imports: [ConfigModule],
 			botName: TELEGRAM_BOT_NAME,

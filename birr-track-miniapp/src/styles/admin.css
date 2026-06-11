@@ -1,0 +1,339 @@
+/* Manager / Owner / Platform Owner view styles. Mobile-first. */
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  gap: 4px;
+}
+
+/* --- Period selector --- */
+.period-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.period-tab {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  background-color: var(--tg-color-section-bg);
+  color: var(--tg-color-subtitle-text);
+  white-space: nowrap;
+}
+
+.period-tab.active {
+  background-color: var(--tg-color-accent);
+  color: #fff;
+}
+
+.custom-range {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.custom-range .form-group {
+  flex: 1;
+  min-width: 130px;
+  margin-bottom: 0;
+}
+
+/* --- Summary cards --- */
+.summary-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  background-color: var(--tg-color-section-bg);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.stat-card .stat-label {
+  font-size: 12px;
+  color: var(--tg-color-subtitle-text);
+  margin-bottom: 4px;
+}
+
+.stat-card .stat-value {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* --- Attention counters --- */
+.attention-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.attention-card {
+  border-radius: 10px;
+  padding: 12px 8px;
+  text-align: center;
+  border: 1px solid transparent;
+}
+
+.attention-card .attention-count {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.attention-card .attention-label {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.attention-card--review {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+.attention-card--dup {
+  background-color: #ffebee;
+  color: #b71c1c;
+}
+.attention-card--edit {
+  background-color: #e3f2fd;
+  color: #0d47a1;
+}
+
+/* --- Breakdown lists --- */
+.section-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 20px 0 10px;
+}
+
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--tg-color-section-bg);
+  gap: 8px;
+}
+
+.breakdown-row:last-child {
+  border-bottom: none;
+}
+
+.breakdown-label {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breakdown-meta {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.breakdown-amount {
+  font-weight: 700;
+}
+
+.breakdown-count {
+  font-size: 12px;
+  color: var(--tg-color-subtitle-text);
+}
+
+/* --- Filters bar --- */
+.filters-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.filters-bar select,
+.filters-bar input {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--tg-color-section-bg);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background-color: var(--tg-color-bg);
+  color: var(--tg-unsafe-text);
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.export-button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background-color: var(--tg-color-section-bg);
+  color: var(--tg-unsafe-text);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+}
+
+/* --- Transaction rows (manager table) --- */
+.tx-waiter {
+  font-size: 12px;
+  color: var(--tg-color-subtitle-text);
+  margin-top: 2px;
+}
+
+/* --- Pagination --- */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+}
+
+.pagination .page-indicator {
+  font-size: 13px;
+  color: var(--tg-color-subtitle-text);
+}
+
+/* --- Staff / list rows --- */
+.list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--tg-color-section-bg);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.list-row .list-main {
+  min-width: 0;
+}
+
+.list-row .list-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-row .list-sub {
+  font-size: 12px;
+  color: var(--tg-color-subtitle-text);
+  margin-top: 2px;
+}
+
+.list-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.action-button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--tg-color-section-bg);
+  color: var(--tg-unsafe-text);
+}
+
+.action-button--primary {
+  background-color: var(--tg-color-accent);
+  color: #fff;
+}
+
+.action-button--danger {
+  background-color: #ffebee;
+  color: #b71c1c;
+}
+
+.action-button:disabled {
+  opacity: 0.5;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+  background-color: var(--tg-color-section-bg);
+  color: var(--tg-color-subtitle-text);
+}
+
+.role-badge--owner {
+  background-color: #ede7f6;
+  color: #4527a0;
+}
+.role-badge--manager {
+  background-color: #e3f2fd;
+  color: #0d47a1;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+.status-badge--active {
+  background-color: #e8f5e9;
+  color: #1b5e20;
+}
+.status-badge--pending {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+.status-badge--suspended,
+.status-badge--rejected {
+  background-color: #ffebee;
+  color: #b71c1c;
+}
+
+.invite-button {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: var(--tg-color-accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.inline-error {
+  background-color: #ffebee;
+  color: #b71c1c;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}

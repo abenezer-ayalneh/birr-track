@@ -19,7 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/transactions', label: 'Transactions', icon: ICONS.transactions, roles: ['waiter', 'manager', 'owner'] },
   { path: '/dashboard', label: 'Dashboard', icon: ICONS.dashboard, roles: ['manager', 'owner'] },
   { path: '/staff', label: 'Staff', icon: ICONS.staff, roles: ['manager', 'owner'] },
-  { path: '/registrations', label: 'Registrations', icon: ICONS.registrations, roles: ['platform_owner'] },
+  { path: '/registrations', label: 'Platform', icon: ICONS.registrations, roles: ['platform_owner'] },
 ]
 
 export function Navigation({ role }: { role: Role }) {

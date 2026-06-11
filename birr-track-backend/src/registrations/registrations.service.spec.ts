@@ -11,6 +11,7 @@ import { RegistrationsService } from './registrations.service'
 describe('RegistrationsService', () => {
 	let service: RegistrationsService
 	let businessRepo: Repository<Business>
+	let userRepo: Repository<User>
 
 	beforeEach(async () => {
 		const module: TestingModule = await Test.createTestingModule({
@@ -28,6 +29,7 @@ describe('RegistrationsService', () => {
 					provide: getRepositoryToken(User),
 					useValue: {
 						findOne: jest.fn(),
+						save: jest.fn(),
 					},
 				},
 			],
@@ -35,6 +37,7 @@ describe('RegistrationsService', () => {
 
 		service = module.get<RegistrationsService>(RegistrationsService)
 		businessRepo = module.get<Repository<Business>>(getRepositoryToken(Business))
+		userRepo = module.get<Repository<User>>(getRepositoryToken(User))
 	})
 
 	describe('approveBusiness', () => {
@@ -46,7 +49,34 @@ describe('RegistrationsService', () => {
 			const result = await service.approveBusiness('123')
 
 			expect(result.status).toBe('active')
+			expect(result.changed).toBe(true)
 			expect(businessRepo.save).toHaveBeenCalled()
+		})
+
+		it('should promote the registrant to owner on approval', async () => {
+			const business = { id: '123', status: 'pending', name: 'Test Business', ownerUserId: 'user-1' } as Business
+			const registrant = { id: 'user-1', role: 'waiter' } as User
+			jest.spyOn(businessRepo, 'findOne').mockResolvedValue(business)
+			jest.spyOn(businessRepo, 'save').mockResolvedValue({ ...business, status: 'active' } as Business)
+			jest.spyOn(userRepo, 'findOne').mockResolvedValue(registrant)
+			jest.spyOn(userRepo, 'save').mockImplementation((user) => Promise.resolve(user as User))
+
+			const result = await service.approveBusiness('123')
+
+			expect(result.status).toBe('active')
+			expect(userRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1', role: 'owner' }))
+		})
+
+		it('should not re-save a registrant who is already owner', async () => {
+			const business = { id: '123', status: 'pending', name: 'Test Business', ownerUserId: 'user-1' } as Business
+			const registrant = { id: 'user-1', role: 'owner' } as User
+			jest.spyOn(businessRepo, 'findOne').mockResolvedValue(business)
+			jest.spyOn(businessRepo, 'save').mockResolvedValue({ ...business, status: 'active' } as Business)
+			jest.spyOn(userRepo, 'findOne').mockResolvedValue(registrant)
+
+			await service.approveBusiness('123')
+
+			expect(userRepo.save).not.toHaveBeenCalled()
 		})
 
 		it('should be idempotent for already active businesses', async () => {
@@ -56,6 +86,7 @@ describe('RegistrationsService', () => {
 			const result = await service.approveBusiness('123')
 
 			expect(result.status).toBe('active')
+			expect(result.changed).toBe(false)
 			expect(businessRepo.save).not.toHaveBeenCalled()
 		})
 
@@ -82,6 +113,7 @@ describe('RegistrationsService', () => {
 			const result = await service.rejectBusiness('123')
 
 			expect(result.status).toBe('rejected')
+			expect(result.changed).toBe(true)
 			expect(businessRepo.save).toHaveBeenCalled()
 		})
 
@@ -92,6 +124,7 @@ describe('RegistrationsService', () => {
 			const result = await service.rejectBusiness('123')
 
 			expect(result.status).toBe('rejected')
+			expect(result.changed).toBe(false)
 			expect(businessRepo.save).not.toHaveBeenCalled()
 		})
 

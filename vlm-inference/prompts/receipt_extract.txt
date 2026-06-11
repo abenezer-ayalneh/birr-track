@@ -5,7 +5,7 @@ bankName, amount, transactionId, timestamp, currency, confidence
 
 Rules:
 - Use null for any field not clearly visible.
-- amount: number only (no commas or currency symbols).
+- amount: number only (no commas or currency symbols). Prioritize amount transferred rather than total amount debited as the total amount debited value might include unwanted expenses.
 - bankName: official bank name as shown (e.g. "Commercial Bank of Ethiopia").
 - transactionId: reference/FT/txn id string exactly as printed.
 - timestamp: ISO-8601 UTC; if only a date is visible, use midnight Z (e.g. "2026-05-13T00:00:00.000Z").

@@ -1,9 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'wouter'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TransactionUpdate } from '../api/types'
 import { useApi } from '../lib/useApi'
+import { useAuthImage } from '../lib/useAuthImage'
+import { fromEatDatetimeLocal, toEatDatetimeLocal } from '../lib/format'
+import { ErrorState, LoadingState } from '../components/States'
+import '../styles/waiter.css'
 
+/**
+ * Receipt detail + edit. Shared by Waiters (own receipts) and Managers/Owners
+ * (any business receipt). The receipt image is fetched through the authenticated
+ * API as a blob and shown via an object URL (a plain <img src> can't carry the JWT).
+ */
 export function WaiterEdit() {
   const api = useApi()
   const [, navigate] = useLocation()
@@ -13,35 +22,47 @@ export function WaiterEdit() {
   const id = params?.id as string
   const [saved, setSaved] = useState(false)
 
-  const { data: tx, isLoading: loadingTx } = useQuery({
+  const { data: tx, isLoading: loadingTx, isError, error } = useQuery({
     queryKey: ['transaction', id],
     queryFn: () => api.getTransaction(id),
     enabled: !!id,
   })
 
+  const { url: imageUrl, loading: imageLoading, error: imageError } = useAuthImage(id)
+
   const [formData, setFormData] = useState<TransactionUpdate>({
-    bankName: tx?.bankName || '',
-    amount: tx?.amount || undefined,
-    transactionId: tx?.transactionId || '',
-    timestamp: tx?.timestamp || '',
+    bankName: '',
+    amount: undefined,
+    transactionId: '',
+    timestamp: '',
   })
+
+  // Seed the form once the transaction loads.
+  useEffect(() => {
+    if (tx) {
+      setFormData({
+        bankName: tx.bankName ?? '',
+        amount: tx.amount ?? undefined,
+        transactionId: tx.transactionId ?? '',
+        timestamp: tx.timestamp ?? '',
+      })
+    }
+  }, [tx])
 
   const updateMutation = useMutation({
     mutationFn: (patch: TransactionUpdate) => api.updateTransaction(id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transaction', id] })
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['summary'] })
       setSaved(true)
       setTimeout(() => navigate('/transactions'), 1000)
     },
   })
 
-  if (loadingTx || !tx) {
-    return (
-      <div className="page text-center">
-        <div className="spinner"></div>
-      </div>
-    )
+  if (loadingTx) return <LoadingState />
+  if (isError || !tx) {
+    return <ErrorState message={error instanceof Error ? error.message : 'Transaction not found'} />
   }
 
   const allFieldsPresent =
@@ -50,20 +71,26 @@ export function WaiterEdit() {
   return (
     <div className="page edit-screen">
       <button
-        style={{
-          marginBottom: '16px',
-          color: 'var(--tg-color-link)',
-          fontSize: '14px',
-        }}
+        style={{ marginBottom: '16px', color: 'var(--tg-color-link)', fontSize: '14px' }}
         onClick={() => navigate('/transactions')}
       >
         ← Back
       </button>
 
-      <img src={tx.imageUrl} alt="Receipt" className="receipt-image" />
+      {imageLoading ? (
+        <div className="receipt-image flex-center" style={{ minHeight: 200 }}>
+          <div className="spinner"></div>
+        </div>
+      ) : imageError ? (
+        <div className="receipt-image flex-center text-muted" style={{ minHeight: 120 }}>
+          Image unavailable
+        </div>
+      ) : imageUrl ? (
+        <img src={imageUrl} alt="Receipt" className="receipt-image" />
+      ) : null}
 
       {tx.editedByUploader && (
-        <div className="edited-flag">🏷️ You edited this receipt. Managers will verify against the image.</div>
+        <div className="edited-flag">🏷️ This receipt was edited by the uploader. Verify against the image.</div>
       )}
 
       {tx.isDuplicate && (
@@ -72,9 +99,13 @@ export function WaiterEdit() {
         </div>
       )}
 
-      {saved && (
-        <div className="success-message">✓ Saved! Redirecting…</div>
+      {updateMutation.isError && (
+        <div className="inline-error">
+          {updateMutation.error instanceof Error ? updateMutation.error.message : 'Failed to save'}
+        </div>
       )}
+
+      {saved && <div className="success-message">✓ Saved! Redirecting…</div>}
 
       <div className="form-group">
         <label className="form-label">Bank</label>
@@ -92,14 +123,15 @@ export function WaiterEdit() {
         <input
           type="number"
           className="form-input"
-          value={formData.amount || ''}
+          value={formData.amount ?? ''}
           onChange={(e) =>
             setFormData({ ...formData, amount: e.target.value ? parseFloat(e.target.value) : undefined })
           }
           placeholder="e.g., 2500.00"
           step="0.01"
+          min="0"
         />
-        <div className="form-hint">Extracted confidence: {Math.round(tx.confidence * 100)}%</div>
+        <div className="form-hint">Extraction confidence: {Math.round(tx.confidence * 100)}%</div>
       </div>
 
       <div className="form-group">
@@ -114,20 +146,19 @@ export function WaiterEdit() {
       </div>
 
       <div className="form-group">
-        <label className="form-label">Date & Time</label>
+        <label className="form-label">Date & Time (EAT)</label>
         <input
           type="datetime-local"
           className="form-input"
-          value={formData.timestamp ? new Date(formData.timestamp).toISOString().slice(0, 16) : ''}
-          onChange={(e) => setFormData({ ...formData, timestamp: new Date(e.target.value).toISOString() })}
+          value={toEatDatetimeLocal(formData.timestamp)}
+          onChange={(e) =>
+            setFormData({ ...formData, timestamp: e.target.value ? fromEatDatetimeLocal(e.target.value) : '' })
+          }
         />
       </div>
 
       <div className="button-group">
-        <button
-          className="button-secondary"
-          onClick={() => navigate('/transactions')}
-        >
+        <button className="button-secondary" onClick={() => navigate('/transactions')}>
           Cancel
         </button>
         <button

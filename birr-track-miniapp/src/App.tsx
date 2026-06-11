@@ -3,30 +3,36 @@ import { Router, Route, Switch } from 'wouter'
 import { useEffect, useState } from 'react'
 import { ApiProvider } from './contexts/ApiProvider'
 import { Layout } from './components/Layout'
-import { WaiterTransactions } from './pages/WaiterTransactions'
+import { TransactionsRoute } from './pages/TransactionsRoute'
 import { WaiterEdit } from './pages/WaiterEdit'
 import { Dashboard } from './pages/Dashboard'
 import { Staff } from './pages/Staff'
 import { Registrations } from './pages/Registrations'
+import { Home } from './pages/Home'
 import { NotFound } from './pages/NotFound'
 import { initTelegram } from './lib/telegram'
-import { mockApiClient } from './api/mock/client'
+import { initTheme } from './lib/theme'
+import { createApiClient } from './api/factory'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 1,
     },
   },
 })
+
+const { client: apiClient } = createApiClient()
 
 function AppRoutes() {
   return (
     <Layout>
       <Switch>
+        <Route path="/" component={Home} />
         <Route path="/transactions/:id" component={WaiterEdit} />
-        <Route path="/transactions" component={WaiterTransactions} />
+        <Route path="/transactions" component={TransactionsRoute} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/staff" component={Staff} />
         <Route path="/registrations" component={Registrations} />
@@ -40,6 +46,7 @@ export function App() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    initTheme()
     initTelegram().then(() => setReady(true))
   }, [])
 
@@ -53,7 +60,7 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ApiProvider client={mockApiClient}>
+      <ApiProvider client={apiClient}>
         <Router>
           <AppRoutes />
         </Router>

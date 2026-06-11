@@ -29,6 +29,10 @@ export interface ApiClient {
 
   // Reports (Manager/Owner)
   getSummary(params?: { from?: string; to?: string }): Promise<Summary>
+  /** Excel export of the (optionally filtered) business transactions. */
+  exportTransactions(params?: TransactionFilters): Promise<Blob>
+  /** Authenticated receipt image fetched as a Blob (Bearer header can't ride <img src>). */
+  getTransactionImage(id: string): Promise<Blob>
 
   // Staff management (Manager/Owner)
   listStaff(): Promise<StaffMember[]>
@@ -44,4 +48,5 @@ export interface ApiClient {
   rejectRegistration(id: string, reason?: string): Promise<Registration>
   listBusinesses(): Promise<BusinessListing[]>
   suspendBusiness(id: string): Promise<BusinessListing>
+  unsuspendBusiness(id: string): Promise<BusinessListing>
 }

@@ -27,7 +27,8 @@ export class RegistrationsController {
 		if (auth.role !== 'platform_owner') {
 			throw new ConflictException('Only platform owner can approve registrations')
 		}
-		return this.registrationsService.approveBusiness(businessId)
+		const { status, message } = await this.registrationsService.approveBusiness(businessId)
+		return { status, message }
 	}
 
 	@Post(':businessId/reject')
@@ -36,6 +37,7 @@ export class RegistrationsController {
 		if (auth.role !== 'platform_owner') {
 			throw new ConflictException('Only platform owner can reject registrations')
 		}
-		return this.registrationsService.rejectBusiness(businessId)
+		const { status, message } = await this.registrationsService.rejectBusiness(businessId)
+		return { status, message }
 	}
 }

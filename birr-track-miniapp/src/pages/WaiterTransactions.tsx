@@ -1,29 +1,35 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'wouter'
-import { useState } from 'react'
-import type { TransactionStatus } from '../api/types'
+import { useMemo, useState } from 'react'
+import type { Transaction, TransactionStatus } from '../api/types'
 import { useApi } from '../lib/useApi'
+import { useRole } from '../lib/useRole'
+import { formatEtb, formatShortDate } from '../lib/format'
+import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/waiter.css'
 
-export function WaiterTransactions() {
+/**
+ * "My Receipts" view. For Waiters the backend already scopes the list to their
+ * own transactions. For Managers/Owners using the `ownView` toggle, the list is
+ * business-wide, so we filter to their own userId client-side.
+ */
+export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
   const api = useApi()
+  const { me } = useRole()
   const [, navigate] = useLocation()
   const [status, setStatus] = useState<TransactionStatus>('needs_review')
 
-  const { data: page, isLoading } = useQuery({
-    queryKey: ['transactions', { status }],
+  const { data: page, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['transactions', 'mine', { status }],
     queryFn: () => api.listTransactions({ status }),
   })
 
-  const transactions = page?.items || []
-
-  if (isLoading) {
-    return (
-      <div className="page text-center">
-        <div className="spinner"></div>
-      </div>
-    )
-  }
+  const transactions = useMemo(() => {
+    let list: Transaction[] = page?.items ?? []
+    // Manager/owner own-view: keep only the current user's receipts.
+    if (ownView && me?.userId) list = list.filter((t) => t.waiter.id === me.userId)
+    return list
+  }, [page, ownView, me?.userId])
 
   return (
     <div className="page">
@@ -33,8 +39,8 @@ export function WaiterTransactions() {
           {transactions.length === 0
             ? 'All caught up!'
             : transactions.length === 1
-              ? '1 receipt needs attention'
-              : `${transactions.length} receipts need attention`}
+              ? '1 receipt'
+              : `${transactions.length} receipts`}
         </p>
       </div>
 
@@ -50,11 +56,19 @@ export function WaiterTransactions() {
         ))}
       </div>
 
-      <div className="transaction-list">
-        {transactions.length === 0 ? (
-          <p className="text-center text-muted mt-2">No transactions to show.</p>
-        ) : (
-          transactions.map((tx) => (
+      {isLoading ? (
+        <LoadingState />
+      ) : isError ? (
+        <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+      ) : transactions.length === 0 ? (
+        <EmptyState
+          icon="✅"
+          title={status === 'needs_review' ? 'Nothing needs review' : 'No recorded receipts'}
+          hint={status === 'needs_review' ? "You're all caught up." : undefined}
+        />
+      ) : (
+        <div className="transaction-list">
+          {transactions.map((tx) => (
             <button
               key={tx.id}
               className="transaction-item"
@@ -63,17 +77,10 @@ export function WaiterTransactions() {
               <div className="flex-between">
                 <div>
                   <div className="tx-bank">{tx.bankName || '?'}</div>
-                  <div className="tx-date text-muted">
-                    {new Date(tx.createdAt).toLocaleDateString('en-GB', {
-                      day: '2-digit',
-                      month: 'short',
-                    })}
-                  </div>
+                  <div className="tx-date text-muted">{formatShortDate(tx.timestamp ?? tx.createdAt)}</div>
                 </div>
                 <div className="flex-between" style={{ gap: '8px', alignItems: 'flex-start' }}>
-                  <div className="tx-amount">
-                    {tx.amount ? `ETB ${tx.amount.toFixed(2)}` : '—'}
-                  </div>
+                  <div className="tx-amount">{formatEtb(tx.amount)}</div>
                   <div className="flex" style={{ gap: '4px', marginTop: '2px' }}>
                     {tx.status === 'needs_review' && <span className="chip chip--warning">⚠️</span>}
                     {tx.isDuplicate && <span className="chip chip--alert">Duplicate</span>}
@@ -82,9 +89,9 @@ export function WaiterTransactions() {
                 </div>
               </div>
             </button>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

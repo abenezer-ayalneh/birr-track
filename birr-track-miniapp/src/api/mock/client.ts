@@ -124,6 +124,21 @@ export class MockApiClient implements ApiClient {
     return fixtureSummary()
   }
 
+  async exportTransactions(): Promise<Blob> {
+    // Mock: a tiny placeholder file so the download flow can be exercised in dev.
+    return new Blob(['mock export'], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+  }
+
+  async getTransactionImage(id: string): Promise<Blob> {
+    // Mock: turn the data-URI receipt SVG into a Blob so the blob/object-URL
+    // path in the views can run identically against mock and real backends.
+    const detail = await this.getTransaction(id)
+    const res = await fetch(detail.imageUrl)
+    return res.blob()
+  }
+
   async listStaff(): Promise<StaffMember[]> {
     return fixtureStaffList()
   }
@@ -178,6 +193,12 @@ export class MockApiClient implements ApiClient {
     const biz = fixtureBusinessesList().find((b) => b.id === id)
     if (!biz) throw new Error(`Business ${id} not found`)
     return { ...biz, status: 'suspended' as const }
+  }
+
+  async unsuspendBusiness(id: string) {
+    const biz = fixtureBusinessesList().find((b) => b.id === id)
+    if (!biz) throw new Error(`Business ${id} not found`)
+    return { ...biz, status: 'active' as const }
   }
 }
 
