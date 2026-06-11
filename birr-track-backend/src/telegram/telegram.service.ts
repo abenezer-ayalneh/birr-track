@@ -39,6 +39,7 @@ export class TelegramService {
 			telegramUserId,
 			telegramName,
 			fileId: selectedPhoto.file_id,
+			fileUniqueId: selectedPhoto.file_unique_id,
 		})
 
 		this.logger.log(`Queued photo message for user ${context.from.id}`)

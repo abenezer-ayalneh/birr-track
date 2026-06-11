@@ -8,10 +8,11 @@ export const TRANSACTION_STATUSES = ['recorded', 'needs_review'] as const
 export type TransactionStatus = (typeof TRANSACTION_STATUSES)[number]
 
 @Entity('transactions')
-@Index('idx_transaction_duplicate_lookup', ['transactionId', 'amount', 'timestamp'])
+@Index('idx_transaction_duplicate_lookup', ['businessId', 'transactionId', 'amount', 'timestamp'])
 @Index('idx_transaction_telegram_user_id', ['telegramUserId'])
 @Index('idx_transaction_created_at', ['createdAt'])
 @Index('idx_transaction_business_id', ['businessId'])
+@Index('idx_transaction_idempotency', ['businessId', 'fileUniqueId'], { unique: true })
 export class Transaction {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
@@ -55,6 +56,9 @@ export class Transaction {
 
 	@Column({ type: 'text', nullable: true })
 	imageKey!: string | null
+
+	@Column({ type: 'varchar', length: 255, nullable: true })
+	fileUniqueId!: string | null
 
 	@CreateDateColumn({ type: 'timestamptz' })
 	createdAt!: Date

@@ -26,20 +26,22 @@ export class TransactionsService {
 		private readonly dataSource: DataSource,
 	) {}
 
-	async create(createTransactionDto: CreateTransactionDto): Promise<Transaction> {
+	async create(createTransactionDto: CreateTransactionDto, status: 'recorded' | 'needs_review' = 'recorded'): Promise<Transaction> {
 		const transaction = this.transactionRepository.create({
 			...createTransactionDto,
-			amount: createTransactionDto.amount.toFixed(2),
-			timestamp: new Date(createTransactionDto.timestamp),
+			amount: createTransactionDto.amount !== undefined ? createTransactionDto.amount.toFixed(2) : null,
+			timestamp: createTransactionDto.timestamp !== undefined ? new Date(createTransactionDto.timestamp) : null,
 			imageKey: createTransactionDto.imageKey ?? null,
+			status,
 		})
 
 		return this.transactionRepository.save(transaction)
 	}
 
-	async findDuplicate(transactionId: string, amount: number, timestamp: string): Promise<Transaction | null> {
+	async findDuplicate(businessId: string, transactionId: string, amount: number, timestamp: string): Promise<Transaction | null> {
 		return this.transactionRepository.findOne({
 			where: {
+				businessId,
 				transactionId,
 				amount: amount.toFixed(2),
 				timestamp: new Date(timestamp),

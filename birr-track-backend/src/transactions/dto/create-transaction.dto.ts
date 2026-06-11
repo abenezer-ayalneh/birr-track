@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, Length, Max, Min } from 'class-validator'
+import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator'
 
 export class CreateTransactionDto {
 	@IsString()
@@ -10,22 +10,32 @@ export class CreateTransactionDto {
 	@Length(1, 255)
 	telegramName!: string
 
+	@IsOptional()
+	@IsUUID()
+	businessId?: string
+
+	@IsOptional()
+	@IsUUID()
+	userId?: string
+
+	@IsOptional()
 	@IsNumber({ maxDecimalPlaces: 2 })
 	@Min(0)
-	amount!: number
+	amount?: number
 
+	@IsOptional()
 	@IsString()
-	@IsNotEmpty()
 	@Length(1, 128)
-	transactionId!: string
+	transactionId?: string
 
+	@IsOptional()
 	@IsDateString()
-	timestamp!: string
+	timestamp?: string
 
+	@IsOptional()
 	@IsString()
-	@IsNotEmpty()
 	@Length(1, 120)
-	bankName!: string
+	bankName?: string
 
 	@IsNumber()
 	@Min(0)
@@ -38,4 +48,8 @@ export class CreateTransactionDto {
 	@IsOptional()
 	@IsString()
 	imageKey?: string
+
+	@IsOptional()
+	@IsString()
+	fileUniqueId?: string
 }
