@@ -1,37 +1,11 @@
 import { Injectable } from '@nestjs/common'
-import { Ctx, On, Start, Update } from 'nestjs-telegraf'
-import { Context } from 'telegraf'
 
-import { WELCOME_MESSAGE } from './telegram.constants'
-import { TelegramService } from './telegram.service'
-
+/**
+ * Placeholder update handler.
+ * Actual bot handlers are in the ConversationService, ReceiptService, and RegistrationService classes,
+ * which are @Update() decorated and will receive updates.
+ */
 @Injectable()
-@Update()
 export class TelegramUpdateHandler {
-	constructor(private readonly telegramService: TelegramService) {}
-
-	@Start()
-	async start(@Ctx() ctx: Context) {
-		await ctx.reply(WELCOME_MESSAGE)
-	}
-
-	@On('text')
-	async handleText(@Ctx() context: Context): Promise<void> {
-		await this.telegramService.handleTextMessage(context)
-	}
-
-	@On('photo')
-	async handlePhoto(@Ctx() context: Context): Promise<void> {
-		await this.telegramService.handlePhotoMessage(context)
-	}
-
-	/** `Composer.on('photo')` only matches `message`, not `edited_message` — cover caption/media edits. */
-	@On('edited_message')
-	async handleEditedMessage(@Ctx() context: Context): Promise<void> {
-		const edited = context.editedMessage
-		if (!edited || !('photo' in edited) || !edited.photo?.length) {
-			return
-		}
-		await this.telegramService.handlePhotoMessage(context)
-	}
+	// Handlers moved to flows/* services
 }

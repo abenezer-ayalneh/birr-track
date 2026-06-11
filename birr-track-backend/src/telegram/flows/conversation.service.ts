@@ -1,0 +1,257 @@
+import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { Ctx, Hears, On, Start, Update } from 'nestjs-telegraf'
+import { Markup } from 'telegraf'
+import { Message, User as TelegramUser } from 'telegraf/types'
+
+import { BusinessesService } from '../../businesses/businesses.service'
+import { Business } from '../../businesses/entities/business.entity'
+import { InvitesService } from '../../invites/invites.service'
+import { UsersService } from '../../users/users.service'
+import { IdentifiedContext } from '../services/identity.service'
+import { INVITE_ROLE_BUTTONS, REGISTER_OR_INVITE_MESSAGE, REGISTER_SUCCESS_MESSAGE, WELCOME_MESSAGE_REGISTERED } from '../telegram.constants'
+
+interface ConversationSession extends Record<string, unknown> {
+	registering?: boolean
+	inviting?: boolean
+	inviteRole?: 'waiter' | 'manager'
+}
+
+@Injectable()
+@Update()
+export class ConversationService {
+	private readonly logger = new Logger(ConversationService.name)
+
+	constructor(
+		private readonly configService: ConfigService,
+		private readonly usersService: UsersService,
+		private readonly businessesService: BusinessesService,
+		private readonly invitesService: InvitesService,
+	) {}
+
+	@Start()
+	async handleStart(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const telegramUserId = ctx.from?.id?.toString()
+		if (!telegramUserId || !ctx.from) {
+			return
+		}
+
+		if (ctx.state.user) {
+			const greeting = WELCOME_MESSAGE_REGISTERED.replace('{businessName}', ctx.state.business?.name || 'your business')
+			await ctx.reply(greeting, this.getMainMenu())
+			return
+		}
+
+		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username)
+		const redeemed = await this.invitesService.redeem(telegramUserId, displayName)
+
+		if (redeemed) {
+			const confirmMsg = `Welcome to Birr Track! You've been added to ${redeemed.user.businessId} as a ${redeemed.user.role}. Open the Mini App to get started.`
+			await ctx.reply(confirmMsg, this.getMainMenu())
+
+			const inviter = redeemed.invite.createdBy
+			const notifyMsg = `${displayName} (@${ctx.from.username || 'no username'}) has accepted your invite and joined as a ${redeemed.user.role}.`
+			try {
+				await ctx.telegram.sendMessage(inviter.telegramUserId, notifyMsg)
+			} catch (err) {
+				this.logger.error(`Failed to notify inviter ${inviter.id}: ${String(err)}`)
+			}
+
+			return
+		}
+
+		await ctx.reply(REGISTER_OR_INVITE_MESSAGE, this.getRegisterOrInviteKeyboard())
+	}
+
+	@Hears('/register')
+	async handleRegisterCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const telegramUserId = ctx.from?.id?.toString()
+		if (!telegramUserId) {
+			return
+		}
+
+		if (ctx.state.user) {
+			await ctx.reply('You are already registered with ' + (ctx.state.business?.name || 'Birr Track') + '.')
+			return
+		}
+
+		const session = (ctx.session || {}) as ConversationSession
+		session.registering = true
+		ctx.session = session
+		await ctx.reply('What is your business name?')
+	}
+
+	@On('text')
+	async handleRegistrationText(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const session = (ctx.session || {}) as ConversationSession
+		if (!session?.registering) {
+			return
+		}
+
+		const message = ctx.message as Message.TextMessage
+		const businessName = message.text?.trim()
+		const telegramUserId = ctx.from?.id?.toString()
+
+		if (!businessName || !telegramUserId || !ctx.from) {
+			await ctx.reply('Business name cannot be empty. Please try again.')
+			return
+		}
+
+		const business = await this.businessesService.create({
+			name: businessName,
+		})
+
+		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username)
+		const user = await this.usersService.joinBusiness({
+			telegramUserId,
+			displayName,
+			businessId: business.id,
+			role: 'owner',
+		})
+
+		business.ownerUserId = user.id
+		await this.businessesService.save(business)
+
+		session.registering = false
+		ctx.session = session
+		await ctx.reply(REGISTER_SUCCESS_MESSAGE)
+
+		await this.notifyPlatformOwner(ctx, business, ctx.from)
+	}
+
+	@Hears('/invite')
+	async handleInviteCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const telegramUserId = ctx.from?.id?.toString()
+		if (!telegramUserId) {
+			return
+		}
+
+		if (!ctx.state.user || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
+			await ctx.reply('Only managers and owners can invite staff.')
+			return
+		}
+
+		const session = (ctx.session || {}) as ConversationSession
+		session.inviting = true
+		ctx.session = session
+
+		const roleButtons = INVITE_ROLE_BUTTONS[ctx.state.user.role as 'manager' | 'owner']
+		const keyboard = Markup.inlineKeyboard(
+			roleButtons.map((role) => [Markup.button.callback(role === 'waiter' ? 'Waiter' : 'Manager', `invite_role_${role}`)]),
+		)
+
+		await ctx.reply('What role would you like to invite?', keyboard)
+	}
+
+	@On('callback_query')
+	async handleCallbackQuery(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const cbQuery = ctx.callbackQuery as { data?: string }
+		const data = cbQuery?.data
+		if (!data?.startsWith('invite_role_')) {
+			return
+		}
+
+		const match = data.match(/^invite_role_(\w+)$/)
+		if (!match || !match[1]) {
+			return
+		}
+
+		const role = match[1] as 'waiter' | 'manager'
+		const session = (ctx.session || {}) as ConversationSession
+		session.inviteRole = role
+		session.inviting = true
+		ctx.session = session
+
+		const keyboard = {
+			keyboard: [[{ text: 'Select staff member', request_user: { request_id: 1, user_is_bot: false } }]],
+			resize_keyboard: true,
+			one_time_keyboard: true,
+		} as unknown as Parameters<typeof ctx.reply>[1]
+
+		await ctx.reply(`Now select the staff member to invite as a ${role}:`, keyboard)
+		await ctx.answerCbQuery()
+	}
+
+	@On('message')
+	async handleUserShared(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const message = ctx.message as unknown
+		const typedMsg = message as { user_shared?: { user_id: number } }
+		if (!typedMsg?.user_shared) {
+			return
+		}
+
+		const selectedUserId = String(typedMsg.user_shared.user_id)
+		const session = (ctx.session || {}) as ConversationSession
+		const role = session?.inviteRole || 'waiter'
+
+		if (!ctx.state.user) {
+			await ctx.reply('You are not registered.')
+			return
+		}
+
+		try {
+			const invite = await this.invitesService.create({
+				inviteeTelegramId: selectedUserId,
+				businessId: ctx.state.user.businessId,
+				role,
+				createdByUserId: ctx.state.user.id,
+			})
+
+			session.inviting = false
+			session.inviteRole = undefined
+			ctx.session = session
+
+			const confirmMsg = `Invite sent! The staff member will be added as a ${role} when they start the bot.`
+			await ctx.reply(confirmMsg, Markup.removeKeyboard())
+
+			this.logger.log(`Invite ${invite.id} created by ${ctx.state.user.id} for user ${selectedUserId} (${role})`)
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : 'Failed to create invite'
+			await ctx.reply(`Error: ${errorMsg}`, Markup.removeKeyboard())
+			this.logger.error(`Failed to create invite: ${String(err)}`)
+		}
+	}
+
+	private getMainMenu() {
+		const miniAppUrl = this.configService.get<string>('MINIAPP_URL') || 'https://mini-app.birr-track.local'
+		return Markup.keyboard([
+			[Markup.button.webApp('📊 Open Admin Panel', miniAppUrl)],
+			[Markup.button.text('📸 Submit Receipt'), Markup.button.text('/invite')],
+		]).resize()
+	}
+
+	private getRegisterOrInviteKeyboard() {
+		return Markup.keyboard([[Markup.button.text('/register'), Markup.button.text('Ask your manager for an invite')]]).resize()
+	}
+
+	private buildDisplayName(firstName?: string, lastName?: string, username?: string): string {
+		const fullName = [firstName, lastName].filter(Boolean).join(' ').trim()
+		if (fullName) {
+			return fullName
+		}
+		if (username) {
+			return username
+		}
+		return 'Unknown User'
+	}
+
+	private async notifyPlatformOwner(ctx: IdentifiedContext, business: Business, registrant: TelegramUser): Promise<void> {
+		const platformOwnerId = this.configService.get<string>('PLATFORM_OWNER_TELEGRAM_ID')
+		if (!platformOwnerId) {
+			return
+		}
+
+		const profileLink = registrant.username ? `@${registrant.username}` : `Telegram ID: ${registrant.id}`
+		const message = `New business registration:\n\nBusiness: ${business.name}\nRegistrant: ${registrant.first_name} ${registrant.last_name || ''} (${profileLink})\n\nApprove or reject below.`
+
+		const approveBtn = Markup.button.callback('✅ Approve', `approve_biz_${business.id}`)
+		const rejectBtn = Markup.button.callback('❌ Reject', `reject_biz_${business.id}`)
+
+		try {
+			await ctx.telegram.sendMessage(platformOwnerId, message, Markup.inlineKeyboard([[approveBtn, rejectBtn]]))
+			this.logger.log(`Notified Platform Owner of business registration ${business.id}`)
+		} catch (err) {
+			this.logger.error(`Failed to notify Platform Owner: ${String(err)}`)
+		}
+	}
+}

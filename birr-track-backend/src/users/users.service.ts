@@ -40,6 +40,11 @@ export class UsersService {
 		return this.userRepository.findOne({ where: { telegramUserId } })
 	}
 
+	/** Find a user by ID (active members only). */
+	async findById(id: string): Promise<User | null> {
+		return this.userRepository.findOne({ where: { id, removedAt: IsNull() } })
+	}
+
 	isActiveMemberOf(user: User | null, businessId: string): boolean {
 		return user !== null && user.removedAt === null && user.businessId === businessId
 	}
