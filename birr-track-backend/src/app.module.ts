@@ -14,6 +14,7 @@ import { createTypeOrmConfig } from './config/typeorm.config'
 import { InvitesModule } from './invites/invites.module'
 import { ProcessingModule } from './processing/processing.module'
 import { QueueModule } from './queue/queue.module'
+import { RegistrationsModule } from './registrations/registrations.module'
 import GlobalExceptionFilter from './shared/filters/global-exception.filter'
 import { ContextAwareThrottlerGuard } from './shared/guards/context-aware-throttler.guard'
 import { TelegramModule } from './telegram/telegram.module'
@@ -46,6 +47,7 @@ import { WebsocketModule } from './websocket/websocket.module'
 		BusinessesModule,
 		UsersModule,
 		InvitesModule,
+		RegistrationsModule,
 		WebsocketModule,
 	],
 	controllers: [AppController],

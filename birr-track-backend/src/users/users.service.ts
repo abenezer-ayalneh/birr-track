@@ -40,6 +40,19 @@ export class UsersService {
 		return this.userRepository.findOne({ where: { telegramUserId } })
 	}
 
+	/** Find a user by ID (including soft-removed). */
+	async findById(userId: string): Promise<User | null> {
+		return this.userRepository.findOne({ where: { id: userId } })
+	}
+
+	/** Get all active staff members in a business. */
+	async getBusinessStaff(businessId: string): Promise<User[]> {
+		return this.userRepository.find({
+			where: { businessId, removedAt: IsNull() },
+			order: { role: 'DESC', displayName: 'ASC' },
+		})
+	}
+
 	isActiveMemberOf(user: User | null, businessId: string): boolean {
 		return user !== null && user.removedAt === null && user.businessId === businessId
 	}

@@ -56,6 +56,7 @@ describe('UsersService', () => {
 						findOne: jest.fn(),
 						create: jest.fn(),
 						save: jest.fn(),
+						find: jest.fn(),
 					},
 				},
 				{
@@ -294,6 +295,42 @@ describe('UsersService', () => {
 		it('should return false for lower role', () => {
 			expect(service.hasRoleAtLeast(mockUser, 'manager')).toBe(false)
 			expect(service.hasRoleAtLeast(mockManager, 'owner')).toBe(false)
+		})
+	})
+
+	describe('findById', () => {
+		it('should return user by id', async () => {
+			jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockUser)
+			const result = await service.findById('user-1')
+			expect(result).toEqual(mockUser)
+			expect(userRepository.findOne).toHaveBeenCalledWith({ where: { id: 'user-1' } })
+		})
+
+		it('should return null when user not found', async () => {
+			jest.spyOn(userRepository, 'findOne').mockResolvedValue(null)
+			const result = await service.findById('invalid-id')
+			expect(result).toBeNull()
+		})
+	})
+
+	describe('getBusinessStaff', () => {
+		it('should return all active staff in business', async () => {
+			const staff = [mockUser, mockManager, mockOwner]
+			jest.spyOn(userRepository, 'find').mockResolvedValue(staff)
+
+			const result = await service.getBusinessStaff('business-1')
+
+			expect(result).toEqual(staff)
+			expect(userRepository.find).toHaveBeenCalledWith({
+				where: { businessId: 'business-1', removedAt: expect.any(Object) },
+				order: { role: 'DESC', displayName: 'ASC' },
+			})
+		})
+
+		it('should return empty array when no staff in business', async () => {
+			jest.spyOn(userRepository, 'find').mockResolvedValue([])
+			const result = await service.getBusinessStaff('empty-business')
+			expect(result).toEqual([])
 		})
 	})
 })

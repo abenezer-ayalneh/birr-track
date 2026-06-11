@@ -4,6 +4,7 @@ import { Response } from 'express'
 import { JwtPayload } from '../auth/auth.service'
 import { AuthUserPayload } from '../auth/decorators/auth-user.decorator'
 import { Roles } from '../auth/decorators/roles.decorator'
+import { StorageService } from '../storage/storage.service'
 import { EXCEL_CONTENT_TYPE, EXCEL_FILE_PREFIX } from './constants/transaction.constants'
 import { CreateTransactionDto } from './dto/create-transaction.dto'
 import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto'
@@ -13,7 +14,10 @@ import { TransactionsService } from './transactions.service'
 
 @Controller('transactions')
 export class TransactionsController {
-	constructor(private readonly transactionsService: TransactionsService) {}
+	constructor(
+		private readonly transactionsService: TransactionsService,
+		private readonly storageService: StorageService,
+	) {}
 
 	@Get()
 	async getTransactions(@Query() queryDto: GetTransactionsQueryDto, @AuthUserPayload() auth: JwtPayload) {
@@ -47,6 +51,12 @@ export class TransactionsController {
 	async getTransaction(@Param('id', ParseUUIDPipe) id: string, @AuthUserPayload() auth: JwtPayload) {
 		this.validateBusinessAccess(auth)
 		return this.transactionsService.findById(id, auth)
+	}
+
+	@Get(':id/image')
+	async getTransactionImage(@Param('id', ParseUUIDPipe) id: string, @AuthUserPayload() auth: JwtPayload, @Res() response: Response): Promise<void> {
+		this.validateBusinessAccess(auth)
+		return this.transactionsService.streamImage(id, auth, response, this.storageService)
 	}
 
 	@Patch(':id')

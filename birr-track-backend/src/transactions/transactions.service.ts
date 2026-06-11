@@ -1,9 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Workbook } from 'exceljs'
+import { Response } from 'express'
 import { DataSource, Repository, SelectQueryBuilder } from 'typeorm'
 
 import { JwtPayload } from '../auth/auth.service'
+import { StorageService } from '../storage/storage.service'
 import { CreateTransactionDto } from './dto/create-transaction.dto'
 import { GetTransactionsQueryDto } from './dto/get-transactions-query.dto'
 import { TransactionSummaryDto } from './dto/transaction-summary.dto'
@@ -97,9 +99,93 @@ export class TransactionsService {
 			.addSelect('COUNT(transaction.id)', 'transactionCount')
 			.getRawOne<{ totalRevenue: string; transactionCount: string }>()
 
-		return {
+		const result: TransactionSummaryDto = {
 			totalRevenue: Number(aggregateResult?.totalRevenue ?? 0),
 			transactionCount: Number(aggregateResult?.transactionCount ?? 0),
+		}
+
+		// Add extended summaries only for manager+ roles
+		if (auth.role !== 'waiter') {
+			result.waiterBreakdown = await this.getWaiterBreakdown(queryDto, auth)
+			result.bankBreakdown = await this.getBankBreakdown(queryDto, auth)
+			result.attentionCounters = await this.getAttentionCounters(queryDto, auth)
+		}
+
+		return result
+	}
+
+	private async getWaiterBreakdown(
+		queryDto: GetTransactionsQueryDto,
+		auth: JwtPayload,
+	): Promise<Array<{ userId: string; displayName: string; amount: number; count: number }>> {
+		const query = this.buildFilteredQuery(queryDto, auth)
+		const results = await query
+			.select('transaction.userId', 'userId')
+			.addSelect('user.displayName', 'displayName')
+			.addSelect('COALESCE(SUM(transaction.amount), 0)', 'amount')
+			.addSelect('COUNT(transaction.id)', 'count')
+			.leftJoin('transaction.user', 'user')
+			.groupBy('transaction.userId')
+			.addGroupBy('user.displayName')
+			.orderBy('amount', 'DESC')
+			.getRawMany<{ userId: string | null; displayName: string | null; amount: string; count: string }>()
+
+		return results
+			.filter((r) => r.userId !== null)
+			.map((r) => ({
+				userId: r.userId,
+				displayName: r.displayName ?? 'Unknown',
+				amount: Number(r.amount ?? 0),
+				count: Number(r.count ?? 0),
+			}))
+	}
+
+	private async getBankBreakdown(queryDto: GetTransactionsQueryDto, auth: JwtPayload): Promise<Array<{ bankName: string; amount: number; count: number }>> {
+		const query = this.buildFilteredQuery(queryDto, auth)
+		const results = await query
+			.select('transaction.bankName', 'bankName')
+			.addSelect('COALESCE(SUM(transaction.amount), 0)', 'amount')
+			.addSelect('COUNT(transaction.id)', 'count')
+			.groupBy('transaction.bankName')
+			.orderBy('amount', 'DESC')
+			.getRawMany<{ bankName: string | null; amount: string; count: string }>()
+
+		return results
+			.filter((r) => r.bankName !== null)
+			.map((r) => ({
+				bankName: r.bankName,
+				amount: Number(r.amount ?? 0),
+				count: Number(r.count ?? 0),
+			}))
+	}
+
+	private async getAttentionCounters(
+		queryDto: GetTransactionsQueryDto,
+		auth: JwtPayload,
+	): Promise<{ needsReview: number; duplicates: number; editedByUploader: number }> {
+		const query = this.buildFilteredQuery(queryDto, auth)
+		const clonedQuery = this.buildFilteredQuery(queryDto, auth)
+		const clonedQuery2 = this.buildFilteredQuery(queryDto, auth)
+
+		const needsReviewResult = await query
+			.andWhere('transaction.status = :status', { status: 'needs_review' })
+			.select('COUNT(transaction.id)', 'count')
+			.getRawOne<{ count: string }>()
+
+		const duplicatesResult = await clonedQuery
+			.andWhere('transaction.isDuplicate = :isDuplicate', { isDuplicate: true })
+			.select('COUNT(transaction.id)', 'count')
+			.getRawOne<{ count: string }>()
+
+		const editedResult = await clonedQuery2
+			.andWhere('transaction.editedByUploader = :editedByUploader', { editedByUploader: true })
+			.select('COUNT(transaction.id)', 'count')
+			.getRawOne<{ count: string }>()
+
+		return {
+			needsReview: Number(needsReviewResult?.count ?? 0),
+			duplicates: Number(duplicatesResult?.count ?? 0),
+			editedByUploader: Number(editedResult?.count ?? 0),
 		}
 	}
 
@@ -288,6 +374,30 @@ export class TransactionsService {
 		return {
 			...item,
 			amount: item.amount ? Number(item.amount) : null,
+		}
+	}
+
+	async streamImage(id: string, auth: JwtPayload, response: Response, storageService: StorageService): Promise<void> {
+		const transaction = await this.transactionRepository.findOne({ where: { id } })
+		if (!transaction) {
+			throw new NotFoundException(`Transaction ${id} not found`)
+		}
+
+		// Verify access
+		this.verifyTransactionAccess(transaction, auth)
+
+		if (!transaction.imageKey) {
+			throw new NotFoundException(`No image available for transaction ${id}`)
+		}
+
+		try {
+			const stream = await storageService.getObjectStream(transaction.imageKey)
+			response.setHeader('Content-Type', 'image/jpeg')
+			response.setHeader('Content-Disposition', `inline; filename="receipt-${id}.jpg"`)
+			stream.pipe(response)
+		} catch (error) {
+			this.logger.error(`Failed to stream image for transaction ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+			throw new NotFoundException(`Image not found for transaction ${id}`)
 		}
 	}
 }
