@@ -75,3 +75,6 @@ vlm-inference/adapters/*
 # llama.cpp clone (build helper for HF→GGUF / LoRA→GGUF conversion).
 # Cloneable on demand; not part of the project tree.
 /llama.cpp/
+
+# Knowledge graph output
+graphify-out/
