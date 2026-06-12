@@ -246,18 +246,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 ### Step 17: Run database migrations
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend node -e "
-  const { execSync } = require('child_process');
-  execSync('npx prisma migrate deploy', { stdio: 'inherit', cwd: '/app' });
-"
-```
-
-Or enter the container:
-
-```bash
-docker compose -f docker-compose.prod.yml exec backend sh
-npx prisma migrate deploy
-exit
+docker compose -f docker-compose.prod.yml exec backend node -r tsconfig-paths/register ./node_modules/typeorm/cli -d dist/database/data-source.js migration:run
 ```
 
 **Expected result:** Migrations applied successfully.
@@ -477,7 +466,7 @@ jobs:
             git pull origin main
             set -a && source birr-track-backend/.env && set +a
             docker compose -f docker-compose.prod.yml up -d --build backend miniapp
-            docker compose -f docker-compose.prod.yml exec -T backend npx prisma migrate deploy
+            docker compose -f docker-compose.prod.yml exec -T backend node -r tsconfig-paths/register ./node_modules/typeorm/cli -d dist/database/data-source.js migration:run
 ```
 
 ---
