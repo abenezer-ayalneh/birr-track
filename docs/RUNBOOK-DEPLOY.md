@@ -348,9 +348,17 @@ HF_HOME=/runpod-volume/hf-cache huggingface-cli download Qwen/Qwen2.5-VL-3B-Inst
 
 # Copy your LoRA adapter
 mkdir -p /runpod-volume/adapter
-# Upload qwen25vl-3b-birrtrack-lora.zip via runpodctl or SCP
+
+# Option A: Upload via SCP from your local machine
+# Run this from your local machine (where qwen25vl-3b-birrtrack-lora.zip is):
+# scp -P 22 qwen25vl-3b-birrtrack-lora.zip root@<POD_IP>:/runpod-volume/
+
+# Option B: Upload via RunPod web UI
+# Go to RunPod → Pod → Files, drag and drop the zip file into /runpod-volume/
+
+# Once uploaded, extract it:
 cd /runpod-volume/adapter
-unzip /tmp/qwen25vl-3b-birrtrack-lora.zip
+unzip /runpod-volume/qwen25vl-3b-birrtrack-lora.zip
 # Verify adapter_config.json exists:
 ls /runpod-volume/adapter/
 ```
