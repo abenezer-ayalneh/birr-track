@@ -486,7 +486,7 @@ jobs:
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| Caddy 502 Bad Gateway | Backend container not running or port not exposed | `docker compose -f docker-compose.prod.yml logs backend` and verify `ss -tlnp | grep 3000` |
+| Caddy 502 Bad Gateway | Backend container not running or port not exposed | `docker compose -f docker-compose.prod.yml logs backend` and verify `ss -tlnp | grep 3004` |
 | Caddy TLS error | DNS not pointing to VPS / port 80 or 443 blocked | Check `dig` output, `ufw status`, and `journalctl -u caddy` |
 | RunPod TIMEOUT | Model not loaded / wrong volume mount | Check endpoint logs in RunPod dashboard |
 | RunPod FAILED | Missing adapter files | SSH into a temp pod, verify `/runpod-volume/adapter/adapter_config.json` exists |
