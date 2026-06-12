@@ -196,7 +196,7 @@ These files are already committed in the repo — verify they exist after clonin
 ls -la /home/birr-track/docker-compose.prod.yml
 ls -la /home/birr-track/birr-track-backend/Dockerfile
 ls -la /home/birr-track/birr-track-miniapp/Dockerfile
-ls -la /home/birr-track/caddy/Caddyfile
+ls -la /home/birr-track/caddy/Caddyfile.caddy
 ```
 
 **Expected result:** All four files exist.
@@ -206,7 +206,7 @@ ls -la /home/birr-track/caddy/Caddyfile
 | `docker-compose.prod.yml` | Orchestrates app services (Postgres, Redis, MinIO, backend, miniapp) |
 | `birr-track-backend/Dockerfile` | Multi-stage Node 20 build → production image |
 | `birr-track-miniapp/Dockerfile` | Multi-stage Vite build → Nginx static serving |
-| `caddy/Caddyfile` | Reverse proxy config for both subdomains (imported into host Caddy) |
+| `caddy/Caddyfile.caddy` | Reverse proxy config for both subdomains (imported into host Caddy) |
 
 ### Step 10: Import the Caddyfile into host Caddy
 
@@ -214,10 +214,10 @@ Caddy is already running on the VPS and serving other sites. Import this project
 
 ```bash
 # Add an import line to the host Caddyfile
-echo 'import /home/birr-track/caddy/Caddyfile' | sudo tee -a /etc/caddy/Caddyfile
+echo 'import /home/birr-track/caddy/Caddyfile.caddy' | sudo tee -a /etc/caddy/Caddyfile.caddy
 
 # Verify the config is valid
-sudo caddy validate --config /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile.caddy
 
 # Reload Caddy
 sudo systemctl reload caddy
