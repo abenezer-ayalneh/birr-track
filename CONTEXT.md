@@ -59,3 +59,9 @@ _Avoid_: copy, resubmission
 **Admin Panel**:
 The Telegram Mini App where Managers view Transactions, summaries, and manage staff; the Platform Owner additionally approves Business registrations there.
 _Avoid_: dashboard, admin site, web app
+
+### Infrastructure
+
+**VLM Worker**:
+The RunPod serverless endpoint that runs the fine-tuned Qwen2.5-VL-3B-Instruct + LoRA adapter for Receipt extraction. Accepts base64-encoded image in JSON, returns structured Transaction fields. Called by the backend via RunPod's `/runsync` API. Model weights live on a RunPod Network Volume (not baked into the Docker image).
+_Avoid_: VLM service, inference server, model API

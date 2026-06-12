@@ -1,13 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
-import FormData from 'form-data'
 
 import { ParsedTransaction } from './types/parsed-transaction.type'
 
 const DEFAULT_VLM_REQUEST_TIMEOUT_MS = 120000
-const RECEIPT_FILENAME = 'receipt.jpg'
-const RECEIPT_CONTENT_TYPE = 'image/jpeg'
 
 type VlmExtractResponse = {
 	bankName?: string | null
@@ -18,15 +15,13 @@ type VlmExtractResponse = {
 	confidence?: number | null
 }
 
-/**
- * HTTP client for the fine-tuned Qwen2.5-VL inference service.
- *
- * Replaces the previous OCR + regex + LLM fallback pipeline with a single
- * vision-language model call that returns structured transaction fields.
- *
- * The Python inference service is a follow-up deliverable; until it is online,
- * this client will fail loudly at runtime.
- */
+type RunPodSyncResponse = {
+	id: string
+	status: string
+	output?: VlmExtractResponse & { error?: string }
+	error?: string
+}
+
 @Injectable()
 export class VlmService {
 	private readonly logger = new Logger(VlmService.name)
@@ -34,25 +29,35 @@ export class VlmService {
 	constructor(private readonly configService: ConfigService) {}
 
 	async extract(imageBuffer: Buffer): Promise<ParsedTransaction> {
-		const baseUrl = this.configService.get<string>('VLM_SERVICE_URL')?.trim()
-		if (!baseUrl) {
-			throw new Error('VLM_SERVICE_URL is not configured')
+		const apiKey = this.configService.get<string>('RUNPOD_API_KEY')?.trim()
+		const endpointId = this.configService.get<string>('RUNPOD_ENDPOINT_ID')?.trim()
+
+		if (!apiKey || !endpointId) {
+			throw new Error('RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID must be configured')
 		}
 
-		const formData = new FormData()
-		formData.append('file', imageBuffer, {
-			filename: RECEIPT_FILENAME,
-			contentType: RECEIPT_CONTENT_TYPE,
-		})
-
 		const timeoutMs = this.getRequestTimeoutMs()
+		const imageBase64 = imageBuffer.toString('base64')
 
-		const response = await axios.post<VlmExtractResponse>(`${baseUrl}/extract`, formData, {
-			headers: formData.getHeaders(),
-			timeout: timeoutMs,
-		})
+		const response = await axios.post<RunPodSyncResponse>(
+			`https://api.runpod.ai/v2/${endpointId}/runsync`,
+			{ input: { image_base64: imageBase64 } },
+			{
+				headers: {
+					Authorization: `Bearer ${apiKey}`,
+					'Content-Type': 'application/json',
+				},
+				timeout: timeoutMs,
+			},
+		)
 
-		const parsed = this.normalizeResponse(response.data)
+		const { status, output, error } = response.data
+
+		if (status !== 'COMPLETED' || error) {
+			throw new Error(`RunPod job failed: status=${status} error=${error ?? output?.error}`)
+		}
+
+		const parsed = this.normalizeResponse(output)
 		this.logger.debug(`VLM extract confidence=${parsed.confidence}`)
 		return parsed
 	}

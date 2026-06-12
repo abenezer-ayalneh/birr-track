@@ -1,0 +1,7 @@
+birr-track-api.abenezer-ayalneh.dev {
+	reverse_proxy localhost:3000
+}
+
+birr-track-telegram-app.abenezer-ayalneh.dev {
+	reverse_proxy localhost:8080
+}
