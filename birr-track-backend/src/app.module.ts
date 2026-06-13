@@ -25,7 +25,7 @@ import { join } from 'node:path'
 
 @Module({
 	imports: [
-		ConfigModule.forRoot({ isGlobal: true, expandVariables: true, envFilePath: [join(__dirname, '..', '..', '..', '.env'), '.env'] }),
+		ConfigModule.forRoot({ isGlobal: true, expandVariables: true, envFilePath: ['.env', join(__dirname, '..', '..', '..', '.env')] }),
 		ThrottlerModule.forRootAsync({
 			imports: [ConfigModule],
 			inject: [ConfigService],
