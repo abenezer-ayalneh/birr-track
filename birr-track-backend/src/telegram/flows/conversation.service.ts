@@ -214,7 +214,7 @@ export class ConversationService {
 	}
 
 	private getMainMenu() {
-		const miniAppUrl = this.configService.get<string>('MINIAPP_URL') || 'https://mini-app.birr-track.local'
+		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
 		return Markup.keyboard([
 			[Markup.button.webApp('📊 Open Admin Panel', miniAppUrl)],
 			[Markup.button.text('📸 Submit Receipt'), Markup.button.text('/invite')],

@@ -132,7 +132,7 @@ export class ReceiptService {
 	}
 
 	async pingWaiterForReview(telegramBot: unknown, telegramUserId: string): Promise<void> {
-		const miniAppUrl = this.configService.get<string>('MINIAPP_URL') || 'https://mini-app.birr-track.local'
+		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
 
 		try {
 			const typedBot = telegramBot as { telegram?: { sendMessage?: (id: string, msg: string, opts: unknown) => Promise<void> } }

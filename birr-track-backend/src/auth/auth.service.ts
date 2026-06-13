@@ -6,7 +6,7 @@ import { UserRole } from '../users/entities/user.entity'
 import { UsersService } from '../users/users.service'
 import { AuthResponseDto } from './dto/auth-response.dto'
 
-const TELEGRAM_INITDATA_EXPIRES_IN_SECONDS = 300 // 5 minutes
+const DEFAULT_TELEGRAM_INITDATA_EXPIRES_IN_SECONDS = 300
 
 export type JwtPayload = {
 	userId: string | null
@@ -83,7 +83,9 @@ export class AuthService {
 		}
 
 		const now = Math.floor(Date.now() / 1000)
-		if (now - authDate > TELEGRAM_INITDATA_EXPIRES_IN_SECONDS) {
+		const raw = Number(this.configService.get<string>('TELEGRAM_INITDATA_EXPIRES_SECONDS'))
+		const expiresInSeconds = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TELEGRAM_INITDATA_EXPIRES_IN_SECONDS
+		if (now - authDate > expiresInSeconds) {
 			throw new UnauthorizedException('initData expired')
 		}
 

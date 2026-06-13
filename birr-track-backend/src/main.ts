@@ -55,7 +55,7 @@ async function bootstrap() {
 	const documentFactory = () => SwaggerModule.createDocument(app, swaggerConfig)
 	SwaggerModule.setup('docs', app, documentFactory)
 
-	await app.listen(configService.get('APP_PORT') ?? 3000, () => {
+	await app.listen(configService.get('BACKEND_PORT') ?? 3000, () => {
 		app.getUrl()
 			.then((url) => logger.verbose(`Application running at ${url}`))
 			.catch((err) => logger.error(err))

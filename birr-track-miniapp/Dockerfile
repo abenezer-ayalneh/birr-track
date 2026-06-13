@@ -1,4 +1,6 @@
 FROM node:22-alpine AS build
+ARG VITE_API_BASE_URL
+ARG VITE_BOT_USERNAME
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile --ignore-scripts

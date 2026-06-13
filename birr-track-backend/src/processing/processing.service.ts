@@ -10,6 +10,8 @@ import { UsersService } from '../users/users.service'
 import { TransactionEventsGateway } from '../websocket/transaction-events.gateway'
 import { VlmService } from './vlm.service'
 
+const DEFAULT_TELEGRAM_FILE_TIMEOUT_MS = 30000
+
 type TelegramGetFileResponse = {
 	ok?: boolean
 	description?: string
@@ -19,6 +21,7 @@ type TelegramGetFileResponse = {
 @Injectable()
 export class ProcessingService {
 	private readonly logger = new Logger(ProcessingService.name)
+	private readonly telegramFileTimeoutMs: number
 
 	constructor(
 		private readonly configService: ConfigService,
@@ -27,7 +30,10 @@ export class ProcessingService {
 		private readonly transactionsService: TransactionsService,
 		private readonly transactionEventsGateway: TransactionEventsGateway,
 		private readonly usersService: UsersService,
-	) {}
+	) {
+		const raw = Number(this.configService.get<string>('TELEGRAM_FILE_DOWNLOAD_TIMEOUT_MS'))
+		this.telegramFileTimeoutMs = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TELEGRAM_FILE_TIMEOUT_MS
+	}
 
 	async processImageJob(payload: ImageProcessingJobPayload): Promise<void> {
 		this.logger.log(`Processing receipt for telegram user ${payload.telegramUserId}`)
@@ -103,7 +109,7 @@ export class ProcessingService {
 		try {
 			const response = await axios.get<ArrayBuffer>(fileUrl, {
 				responseType: 'arraybuffer',
-				timeout: 30000,
+				timeout: this.telegramFileTimeoutMs,
 			})
 			return Buffer.from(response.data)
 		} catch (err: unknown) {
@@ -130,7 +136,7 @@ export class ProcessingService {
 
 		const response = await axios.get<TelegramGetFileResponse>(`https://api.telegram.org/bot${token}/getFile`, {
 			params: { file_id: trimmedFileId },
-			timeout: 30000,
+			timeout: this.telegramFileTimeoutMs,
 			validateStatus: () => true,
 		})
 

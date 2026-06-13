@@ -1,18 +1,18 @@
 # Runbook: Full Deployment
 
 **Owner:** Abenezer Ayalneh | **Frequency:** As needed
-**Last Updated:** 2026-06-12 | **Last Run:** —
+**Last Updated:** 2026-06-13 | **Last Run:** —
 
 ## Purpose
 
 Deploy Birr Track end-to-end:
 
-- **VPS (Ubuntu 22.04/24.04):** NestJS backend, Vite Mini App, PostgreSQL, Redis, MinIO, Caddy (auto-HTTPS)
-- **RunPod Serverless:** Fine-tuned Qwen2.5-VL-3B receipt extraction
+- **VPS (Ubuntu 22.04/24.04):** NestJS backend, Vite Admin Panel, PostgreSQL, Redis, MinIO, Caddy (auto-HTTPS)
+- **RunPod Serverless:** Fine-tuned Qwen2.5-VL-3B Receipt extraction (VLM Worker)
 
 Domains:
 - API: `birr-track-api.abenezer-ayalneh.dev`
-- Mini App: `birr-track-telegram-app.abenezer-ayalneh.dev`
+- Admin Panel: `birr-track-telegram-app.abenezer-ayalneh.dev`
 
 ## Prerequisites
 
@@ -116,185 +116,140 @@ Add two A records pointing to your VPS IP:
 ssh deploy@<VPS_IP>
 sudo mkdir -p /home/birr-track
 sudo chown deploy:deploy /home/birr-track
-git clone https://github.com/<your-gh-username>/birr-track.git /home/birr-track
+git clone https://github.com/abenezer-ayalneh/birr-track.git /home/birr-track
 cd /home/birr-track
 ```
 
-### Step 7: Create production `.env` for the backend
+### Step 7: Create the production `.env`
+
+All services read from a single root `.env` file. Copy the production template and fill in the empty values:
 
 ```bash
-cat > /home/birr-track/birr-track-backend/.env << 'ENVEOF'
-# App
-PORT=3000
-APP_BASE_URL=https://birr-track-api.abenezer-ayalneh.dev
-NODE_ENVIRONMENT=production
-CORS_ALLOWED_ORIGINS=https://birr-track-telegram-app.abenezer-ayalneh.dev
-FRONTEND_APP_URL=https://birr-track-telegram-app.abenezer-ayalneh.dev
-
-# Throttle
-THROTTLER_TTL=60000
-THROTTLER_LIMIT=30
-
-# Database (internal Docker network)
-DATABASE_USER=postgres
-DATABASE_PASSWORD=<GENERATE_A_STRONG_PASSWORD>
-DATABASE_HOST=postgres
-DATABASE_PORT=5432
-DATABASE_NAME=birr_track
-DATABASE_URL=postgresql://postgres:<SAME_PASSWORD>@postgres:5432/birr_track?schema=public
-
-# Redis (internal Docker network)
-REDIS_HOST=redis
-REDIS_PORT=6379
-
-# RunPod VLM Worker
-RUNPOD_API_KEY=<YOUR_RUNPOD_API_KEY>
-RUNPOD_ENDPOINT_ID=<YOUR_RUNPOD_ENDPOINT_ID>
-VLM_REQUEST_TIMEOUT_MS=120000
-
-# Telegram
-TELEGRAM_BOT_TOKEN=<YOUR_BOT_TOKEN>
-TELEGRAM_WEBHOOK_SECRET=<GENERATE_A_RANDOM_STRING>
-TELEGRAM_WEBHOOK_BASE_URL=https://birr-track-api.abenezer-ayalneh.dev
-TELEGRAM_PHOTO_RATE_LIMIT=30
-TELEGRAM_PHOTO_RATE_WINDOW_SECONDS=60
-
-# MinIO (internal Docker network)
-STORAGE_ENDPOINT=http://minio:9000
-STORAGE_REGION=us-east-1
-STORAGE_BUCKET=birr-track-receipts
-STORAGE_ACCESS_KEY=<GENERATE_MINIO_ACCESS_KEY>
-STORAGE_SECRET_KEY=<GENERATE_MINIO_SECRET_KEY>
-STORAGE_FORCE_PATH_STYLE=true
-ENVEOF
+cp .env.production.example .env
 ```
 
-Replace every `<...>` placeholder. Generate passwords with:
+Generate secrets:
 
 ```bash
-openssl rand -hex 24
+openssl rand -hex 24   # use for DATABASE_PASSWORD
+openssl rand -hex 24   # use for STORAGE_ACCESS_KEY
+openssl rand -hex 24   # use for STORAGE_SECRET_KEY
+openssl rand -hex 24   # use for TELEGRAM_WEBHOOK_SECRET
 ```
 
-### Step 8: Create `.env` for the Mini App
+Edit `.env` and fill in:
+
+| Variable | Where to get it |
+|----------|----------------|
+| `DATABASE_PASSWORD` | Generated above |
+| `STORAGE_ACCESS_KEY` | Generated above |
+| `STORAGE_SECRET_KEY` | Generated above |
+| `TELEGRAM_BOT_TOKEN` | From [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_WEBHOOK_SECRET` | Generated above |
+| `VITE_BOT_USERNAME` | Your bot's username (without @) |
+| `RUNPOD_API_KEY` | From RunPod (fill in after Part 6) |
+| `RUNPOD_ENDPOINT_ID` | From RunPod (fill in after Part 6) |
+
+**Important:** Every empty value must be filled before starting services. The `DATABASE_URL` is not in the `.env` — the backend constructs it from the individual `DATABASE_*` variables.
+
+### Step 8: Verify deployment files
+
+These files are already committed in the repo — verify they exist:
 
 ```bash
-cat > /home/birr-track/birr-track-miniapp/.env << 'ENVEOF'
-VITE_API_BASE_URL=https://birr-track-api.abenezer-ayalneh.dev
-VITE_BOT_USERNAME=<YOUR_BOT_USERNAME>
-ENVEOF
-```
-
----
-
-## Part 4: Docker Compose (Production)
-
-### Step 9: Verify deployment files
-
-These files are already committed in the repo — verify they exist after cloning:
-
-```bash
-ls -la /home/birr-track/docker-compose.prod.yml
-ls -la /home/birr-track/birr-track-backend/Dockerfile
-ls -la /home/birr-track/birr-track-miniapp/Dockerfile
-ls -la /home/birr-track/caddy/birr-track.caddy
+ls docker-compose.prod.yml birr-track-backend/Dockerfile birr-track-miniapp/Dockerfile caddy/birr-track.caddy
 ```
 
 **Expected result:** All four files exist.
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.prod.yml` | Orchestrates app services (Postgres, Redis, MinIO, backend, miniapp) |
-| `birr-track-backend/Dockerfile` | Multi-stage Node 20 build → production image |
-| `birr-track-miniapp/Dockerfile` | Multi-stage Vite build → Nginx static serving |
-| `caddy/birr-track.caddy` | Reverse proxy config for both subdomains (imported into host Caddy) |
+| `docker-compose.prod.yml` | Orchestrates all services (reads ports and credentials from `.env`) |
+| `birr-track-backend/Dockerfile` | Multi-stage Node 22 build → production image |
+| `birr-track-miniapp/Dockerfile` | Multi-stage Vite build → Nginx static serving (receives `VITE_*` as build args) |
+| `caddy/birr-track.caddy` | Reverse proxy config for both subdomains |
 
-### Step 10: Import the Caddyfile into host Caddy
+---
 
-Caddy is already running on the VPS and serving other sites. Import this project's config into the existing Caddyfile:
+## Part 4: Caddy Reverse Proxy
+
+Caddy is already running on the VPS and serving other sites. Import this project's config:
 
 ```bash
-# Add an import line to the host Caddyfile
-echo 'import /home/birr-track/caddy/birr-track.caddy' | sudo tee -a /etc/caddy/birr-track.caddy
+echo 'import /home/birr-track/caddy/birr-track.caddy' | sudo tee -a /etc/caddy/Caddyfile
 
-# Verify the config is valid
-sudo caddy validate --config /etc/caddy/birr-track.caddy
+sudo caddy validate --config /etc/caddy/Caddyfile
 
-# Reload Caddy
 sudo systemctl reload caddy
 ```
 
 **Expected result:** `caddy validate` reports no errors. After reload, Caddy serves both new subdomains alongside existing sites.
 **If it fails:** Check that the import path is correct and there are no duplicate site addresses across your Caddyfiles.
 
+> **Note:** `caddy/birr-track.caddy` hardcodes `localhost:3004` (backend) and `localhost:3003` (Admin Panel). If you change `BACKEND_PORT` or `MINI_APP_PORT` in `.env`, you must also update the ports in that file.
+
 ---
 
-## Part 6: First Deploy on VPS
+## Part 5: First Deploy on VPS
 
-### Step 16: Start everything
+### Step 9: Start everything
 
 ```bash
 cd /home/birr-track
 
-# Source the backend .env for Compose variable interpolation
-set -a && source birr-track-backend/.env && set +a
+set -a && source .env && set +a
 
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 **Expected result:** All containers running: `docker compose -f docker-compose.prod.yml ps` shows all healthy.
 
-### Step 17: Run database migrations
+### Step 10: Run database migrations
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend node -r tsconfig-paths/register ./node_modules/typeorm/cli -d dist/database/data-source.js migration:run
+docker compose -f docker-compose.prod.yml exec backend node ./node_modules/typeorm/cli -d dist/src/database/data-source.js migration:run
 ```
 
 **Expected result:** Migrations applied successfully.
-**If it fails:** Check `DATABASE_URL` in `.env` matches the `postgres` service name.
+**If it fails:** Check that `DATABASE_HOST=postgres` and `DATABASE_PASSWORD` are set correctly in `.env`. The host must be `postgres` (the Docker service name), not `localhost`.
 
-### Step 18: Create the MinIO bucket
+### Step 11: Create the MinIO bucket
 
 ```bash
-docker compose -f docker-compose.prod.yml exec minio mc alias set local http://localhost:9000 <STORAGE_ACCESS_KEY> <STORAGE_SECRET_KEY>
-docker compose -f docker-compose.prod.yml exec minio mc mb local/birr-track-receipts --ignore-existing
+docker compose -f docker-compose.prod.yml exec minio mc alias set local http://localhost:9000 $STORAGE_ACCESS_KEY $STORAGE_SECRET_KEY
+docker compose -f docker-compose.prod.yml exec minio mc mb local/$STORAGE_BUCKET --ignore-existing
 ```
 
-### Step 19: Set up the Telegram webhook
+**Expected result:** Bucket created (or already exists).
+
+### Step 12: Set up the Telegram webhook
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend node dist/scripts/setup-telegram-webhook.js
-```
-
-Or manually:
-
-```bash
-curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://birr-track-api.abenezer-ayalneh.dev/telegram/webhook",
-    "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"
-  }'
+  -d "{
+    \"url\": \"${TELEGRAM_WEBHOOK_BASE_URL}/telegram/webhook\",
+    \"secret_token\": \"${TELEGRAM_WEBHOOK_SECRET}\"
+  }"
 ```
 
 **Expected result:** `{"ok":true,"result":true,"description":"Webhook was set"}`
 
-### Step 20: Verify
+### Step 13: Verify
 
 ```bash
-# Backend health
 curl https://birr-track-api.abenezer-ayalneh.dev/health
 
-# Mini App loads
 curl -sI https://birr-track-telegram-app.abenezer-ayalneh.dev | head -5
 ```
 
-**Expected result:** Backend returns JSON health response; Mini App returns `200 OK`.
+**Expected result:** Backend returns a JSON health response; Admin Panel returns `200 OK`.
 
 ---
 
-## Part 7: RunPod VLM Worker Setup
+## Part 6: RunPod VLM Worker Setup
 
-### Step 21: Build and push the VLM Docker image
+### Step 14: Build and push the VLM Docker image
 
 On your local machine:
 
@@ -309,7 +264,7 @@ docker push abenezerayalneh/birr-track-vlm:latest
 **Expected result:** Image pushed to Docker Hub.
 **If it fails:** `docker login` first.
 
-### Step 22: Create a RunPod Network Volume
+### Step 15: Create a RunPod Network Volume
 
 1. Log in to [runpod.io](https://runpod.io)
 2. Go to **Storage** → **Network Volumes**
@@ -319,7 +274,7 @@ docker push abenezerayalneh/birr-track-vlm:latest
    - **Region:** Pick the cheapest GPU region (e.g. EU-RO-1 or US-TX-3)
 4. Note the volume ID
 
-### Step 23: Download model weights to the Network Volume
+### Step 16: Download model weights to the Network Volume
 
 Create a temporary GPU Pod with the network volume attached:
 
@@ -332,23 +287,12 @@ Create a temporary GPU Pod with the network volume attached:
 ```bash
 pip install huggingface_hub[cli]
 
-# Download base model to the HF cache on the volume
 HF_HOME=/runpod-volume/hf-cache huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct
 
-# Copy your LoRA adapter
 mkdir -p /runpod-volume/adapter
-
-# Option A: Upload via SCP from your local machine
-# Run this from your local machine (where qwen25vl-3b-birrtrack-lora.zip is):
-# scp -P 22 qwen25vl-3b-birrtrack-lora.zip root@<POD_IP>:/runpod-volume/
-
-# Option B: Upload via RunPod web UI
-# Go to RunPod → Pod → Files, drag and drop the zip file into /runpod-volume/
-
-# Once uploaded, extract it:
+# Upload qwen25vl-3b-birrtrack-lora.zip via RunPod web UI or SCP, then:
 cd /runpod-volume/adapter
 unzip /runpod-volume/qwen25vl-3b-birrtrack-lora.zip
-# Verify adapter_config.json exists:
 ls /runpod-volume/adapter/
 ```
 
@@ -356,17 +300,17 @@ ls /runpod-volume/adapter/
 
 6. **Stop and delete the temporary pod** (the network volume persists).
 
-### Step 24: Create the Serverless Endpoint
+### Step 17: Create the Serverless Endpoint
 
 1. Go to **Serverless** → **Endpoints** → **New Endpoint**
 2. Configure:
    - **Name:** `birr-track-vlm`
    - **Docker Image:** `abenezerayalneh/birr-track-vlm:latest`
-   - **GPU:** RTX 3080 or RTX 3090 (cheapest option, ~$0.20–0.40/hr)
+   - **GPU:** RTX 3080 or RTX 3090 (~$0.20–0.40/hr)
    - **Network Volume:** `birr-track-models` mounted at `/runpod-volume`
    - **Min Workers:** 0 (scale to zero when idle)
    - **Max Workers:** 1
-   - **Idle Timeout:** 5 seconds (scales down fast)
+   - **Idle Timeout:** 5 seconds
    - **Execution Timeout:** 120 seconds
    - **Environment Variables:**
      - `HF_HOME=/runpod-volume/hf-cache`
@@ -374,44 +318,47 @@ ls /runpod-volume/adapter/
      - `VLM_BACKEND=peft`
      - `HF_BASE_MODEL=Qwen/Qwen2.5-VL-3B-Instruct`
 3. Click **Create**
-4. Note the **Endpoint ID** from the URL (e.g. `abc123def456`)
+4. Note the **Endpoint ID** from the URL
 
-### Step 25: Get your API key
+### Step 18: Get your API key and update the VPS
 
 1. Go to **Settings** → **API Keys**
 2. Create a new key or copy existing
-3. Update your VPS backend `.env`:
+3. Update `.env` on the VPS:
 
 ```bash
 ssh deploy@<VPS_IP>
 cd /home/birr-track
-# Edit birr-track-backend/.env:
-# RUNPOD_API_KEY=rpa_XXXXXXXXXXXX
-# RUNPOD_ENDPOINT_ID=abc123def456
+# Edit .env — set RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID
 
-# Restart backend
-set -a && source birr-track-backend/.env && set +a
+# Restart the backend to pick up the new values
+set -a && source .env && set +a
 docker compose -f docker-compose.prod.yml up -d --build backend
 ```
 
-### Step 26: Test the VLM Worker
+### Step 19: Test the VLM Worker
+
+From the VPS (where `.env` is sourced):
 
 ```bash
-# Direct RunPod test
-curl -X POST "https://api.runpod.ai/v2/<ENDPOINT_ID>/runsync" \
-  -H "Authorization: Bearer <RUNPOD_API_KEY>" \
+curl -s -X POST "https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync" \
+  -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"input\": {\"image_base64\": \"$(base64 -w0 /path/to/test-receipt.jpg)\"}}"
+  -d "{\"input\": {\"image_base64\": \"$(base64 -i /path/to/test-receipt.jpg)\"}}"
 ```
 
-**Expected result:** JSON with `status: "COMPLETED"` and `output: { bankName, amount, ... }`.
-**If it fails:** Check `docker compose -f docker-compose.prod.yml logs` on RunPod dashboard → Endpoint → Logs.
+> **macOS note:** Use `base64 -i <file>` on macOS. On Linux, use `base64 -w0 <file>`.
+
+**Expected result:** JSON with `status: "COMPLETED"` and extracted Transaction fields (`bankName`, `amount`, etc.).
+**If it fails:** Check endpoint logs in RunPod dashboard → Endpoint → Logs.
 
 ---
 
-## Part 8: GitHub Actions CI/CD
+## Part 7: GitHub Actions CI/CD
 
-### Step 27: Add secrets to GitHub
+The workflow file is at `.github/workflows/deploy.yml`.
+
+### Step 20: Add secrets to GitHub
 
 Go to your repo → Settings → Secrets and variables → Actions. Add:
 
@@ -422,52 +369,8 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | `VPS_SSH_KEY`            | Private SSH key for `deploy` user    |
 | `DOCKERHUB_USERNAME`     | `abenezerayalneh`                    |
 | `DOCKERHUB_TOKEN`        | Docker Hub access token              |
-| `RUNPOD_API_KEY`         | RunPod API key (for VLM image push)  |
 
-### Step 28: Create the deploy workflow
-
-Create `.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy-vlm:
-    runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.message, '[vlm]') || contains(github.event.head_commit.modified, 'vlm-inference/')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: ./vlm-inference
-          push: true
-          tags: abenezerayalneh/birr-track-vlm:latest
-          platforms: linux/amd64
-
-  deploy-vps:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            cd /home/birr-track
-            git pull origin main
-            set -a && source birr-track-backend/.env && set +a
-            docker compose -f docker-compose.prod.yml up -d --build backend miniapp
-            docker compose -f docker-compose.prod.yml exec -T backend node -r tsconfig-paths/register ./node_modules/typeorm/cli -d dist/database/data-source.js migration:run
-```
+**Expected result:** Pushing to `main` triggers the deploy workflow. Include `[vlm]` in a commit message to also rebuild and push the VLM Worker image.
 
 ---
 
@@ -475,7 +378,7 @@ jobs:
 
 - [ ] `curl https://birr-track-api.abenezer-ayalneh.dev/health` returns OK
 - [ ] `curl https://birr-track-telegram-app.abenezer-ayalneh.dev` returns HTML
-- [ ] Send a receipt image to the Telegram bot → Transaction is created
+- [ ] Send a Receipt image to the Telegram bot → Transaction is created
 - [ ] RunPod dashboard shows the endpoint received a request
 - [ ] `docker compose -f docker-compose.prod.yml ps` shows all containers healthy
 
@@ -483,13 +386,15 @@ jobs:
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| Caddy 502 Bad Gateway | Backend container not running or port not exposed | `docker compose -f docker-compose.prod.yml logs backend` and verify `ss -tlnp | grep 3004` |
+| Caddy 502 Bad Gateway | Backend container not running or port mismatch | `docker compose -f docker-compose.prod.yml logs backend` — verify `BACKEND_PORT` in `.env` matches port in `caddy/birr-track.caddy` |
 | Caddy TLS error | DNS not pointing to VPS / port 80 or 443 blocked | Check `dig` output, `ufw status`, and `journalctl -u caddy` |
 | RunPod TIMEOUT | Model not loaded / wrong volume mount | Check endpoint logs in RunPod dashboard |
 | RunPod FAILED | Missing adapter files | SSH into a temp pod, verify `/runpod-volume/adapter/adapter_config.json` exists |
-| Telegram webhook not working | Wrong URL or secret | Re-run webhook setup script |
-| Mini App blank page | `VITE_API_BASE_URL` not set at build time | Rebuild miniapp container with correct `.env` |
-| MinIO connection refused | MinIO container not healthy | `docker compose logs minio`, check access/secret keys |
+| Telegram webhook not working | Wrong URL or secret | Re-run the webhook curl from Step 12 with sourced `.env` |
+| Admin Panel blank page | `VITE_API_BASE_URL` not set at build time | Rebuild: `docker compose -f docker-compose.prod.yml up -d --build miniapp` |
+| MinIO connection refused | MinIO container not healthy | `docker compose -f docker-compose.prod.yml logs minio` — check `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env` |
+| Migration fails: "Cannot find data-source.js" | Wrong path in command | Use `dist/src/database/data-source.js` (with `src/` prefix) |
+| Postgres won't start: "password not specified" | `DATABASE_PASSWORD` empty in `.env` | Set it to a non-empty value |
 
 ## Rollback
 
@@ -499,10 +404,11 @@ jobs:
 cd /home/birr-track
 git log --oneline -5          # find the last good commit
 git checkout <commit-hash>
+set -a && source .env && set +a
 docker compose -f docker-compose.prod.yml up -d --build backend miniapp
 ```
 
-### RunPod VLM
+### RunPod VLM Worker
 
 Tag images before deploying new versions:
 
