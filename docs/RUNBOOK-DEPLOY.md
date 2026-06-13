@@ -152,6 +152,8 @@ Edit `.env` and fill in:
 
 **Important:** Every empty value must be filled before starting services. The `DATABASE_URL` is not in the `.env` — the backend constructs it from the individual `DATABASE_*` variables.
 
+> **Internal vs external ports — do not confuse them.** `DATABASE_PORT` (5432) and `REDIS_PORT` (6379) are the **internal** container ports the backend dials over the Docker network; they must match what the containers listen on and should not be changed. `DATABASE_EXTERNAL_PORT` (5433) and `REDIS_EXTERNAL_PORT` (6380) are the **VPS-host** ports published for outside access — change *these* if 5432/6379 are already taken on the host. Putting the external value into `DATABASE_PORT`/`REDIS_PORT` makes the backend fail with `ECONNREFUSED` (see Troubleshooting).
+
 ### Step 8: Verify deployment files
 
 These files are already committed in the repo — verify they exist:
@@ -395,6 +397,9 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | MinIO connection refused | MinIO container not healthy | `docker compose -f docker-compose.prod.yml logs minio` — check `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env` |
 | Migration fails: "Cannot find data-source.js" | Wrong path in command | Use `dist/src/database/data-source.js` (with `src/` prefix) |
 | Postgres won't start: "password not specified" | `DATABASE_PASSWORD` empty in `.env` | Set it to a non-empty value |
+| Backend `ECONNREFUSED <ip>:5433` or `<ip>:6380` | `DATABASE_PORT`/`REDIS_PORT` hold the **external** value | These are **internal** ports: set `DATABASE_PORT=5432`, `REDIS_PORT=6379`. Use `DATABASE_EXTERNAL_PORT`/`REDIS_EXTERNAL_PORT` for the host-published ports. Then `docker compose -f docker-compose.prod.yml up -d --force-recreate backend` |
+| Backend `EAI_AGAIN postgres`/`redis` (DNS) | A service is detached from the compose network — `docker ps` shows it `Up` but with an empty network column and no published ports. Happens after a partial single-service `up`/`down` or a Docker daemon restart | Recreate the **whole** stack so Compose reattaches everyone with DNS aliases: `docker compose -f docker-compose.prod.yml up -d --force-recreate`. If needed, `down` (never `-v`) then `up -d`. Prefer full-stack `up` over single-service `--force-recreate <svc>` to avoid this |
+| `up` fails: `Bind for 127.0.0.1:<port> failed: port is already allocated` | A `*_EXTERNAL_PORT` points at a host port already taken by another stack on the VPS (this box also runs an `infra` Postgres/Redis on 5432/6379) | Point the external port at a free one: `DATABASE_EXTERNAL_PORT=5433`, `REDIS_EXTERNAL_PORT=6380`. Internal `DATABASE_PORT`/`REDIS_PORT` stay 5432/6379. See occupants with `ss -tlnp \| grep <port>`. **Re-source `.env` after editing** — exported shell vars override the file |
 
 ## Rollback
 
