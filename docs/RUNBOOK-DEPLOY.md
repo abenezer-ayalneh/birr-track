@@ -218,8 +218,12 @@ docker compose -f docker-compose.prod.yml exec backend node ./node_modules/typeo
 ### Step 11: Create the MinIO bucket
 
 ```bash
-docker compose -f docker-compose.prod.yml exec minio mc alias set local http://localhost:9000 $STORAGE_ACCESS_KEY $STORAGE_SECRET_KEY
-docker compose -f docker-compose.prod.yml exec minio mc mb local/$STORAGE_BUCKET --ignore-existing
+# Runs inside the minio container, so it uses the creds/bucket name compose already injected
+# there (MINIO_ROOT_USER/PASSWORD/STORAGE_BUCKET) — no need to `source .env`, and the +/=/
+# characters in the keys can't break. 9000 is the S3 API port INSIDE the container (console is
+# 9003); the host ports 9002/9003 do not apply here.
+docker compose -f docker-compose.prod.yml exec minio sh -c \
+  'mc alias set local http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc mb "local/$STORAGE_BUCKET" --ignore-existing && mc ls local'
 ```
 
 **Expected result:** Bucket created (or already exists).
@@ -395,6 +399,7 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | Telegram webhook not working | Wrong URL or secret | Re-run the webhook curl from Step 12 with sourced `.env` |
 | Admin Panel blank page | `VITE_API_BASE_URL` not set at build time | Rebuild: `docker compose -f docker-compose.prod.yml up -d --build miniapp` |
 | MinIO connection refused | MinIO container not healthy | `docker compose -f docker-compose.prod.yml logs minio` — check `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env` |
+| `mc`: `S3 API Requests must be made to API port` / bucket `Access Denied` | `mc` hit the console port, or `$STORAGE_*` were empty because the host `.env` wasn't sourced | Use the in-container form in Step 11 (`$MINIO_ROOT_USER`/`$MINIO_ROOT_PASSWORD` against API port 9000) — no host sourcing needed |
 | Migration fails: "Cannot find data-source.js" | Wrong path in command | Use `dist/src/database/data-source.js` (with `src/` prefix) |
 | Postgres won't start: "password not specified" | `DATABASE_PASSWORD` empty in `.env` | Set it to a non-empty value |
 | Backend `ECONNREFUSED <ip>:5433` or `<ip>:6380` | `DATABASE_PORT`/`REDIS_PORT` hold the **external** value | These are **internal** ports: set `DATABASE_PORT=5432`, `REDIS_PORT=6379`. Use `DATABASE_EXTERNAL_PORT`/`REDIS_EXTERNAL_PORT` for the host-published ports. Then `docker compose -f docker-compose.prod.yml up -d --force-recreate backend` |
