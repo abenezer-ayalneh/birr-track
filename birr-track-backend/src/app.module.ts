@@ -21,10 +21,11 @@ import { TelegramModule } from './telegram/telegram.module'
 import { TransactionsModule } from './transactions/transactions.module'
 import { UsersModule } from './users/users.module'
 import { WebsocketModule } from './websocket/websocket.module'
+import { join } from 'node:path'
 
 @Module({
 	imports: [
-		ConfigModule.forRoot({ isGlobal: true, expandVariables: true }),
+		ConfigModule.forRoot({ envFilePath: join(__dirname, '..', '..', '.env'), isGlobal: true, expandVariables: true }),
 		ThrottlerModule.forRootAsync({
 			imports: [ConfigModule],
 			inject: [ConfigService],
