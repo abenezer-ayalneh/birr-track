@@ -23,6 +23,8 @@ export default new DataSource({
 	password: process.env.DATABASE_PASSWORD ?? 'postgres',
 	database: process.env.DATABASE_NAME ?? DEFAULT_DATABASE_NAME,
 	entities: [Transaction, EditLog, Business, User, Invite],
-	migrations: ['src/database/migrations/*.ts'],
+	// Resolve relative to this file so it works both in dev (src/database/migrations/*.ts)
+	// and in the production image (dist/src/database/migrations/*.js).
+	migrations: [resolve(__dirname, 'migrations', '*.{ts,js}')],
 	synchronize: false,
 })

@@ -55,7 +55,9 @@ async function bootstrap() {
 	const documentFactory = () => SwaggerModule.createDocument(app, swaggerConfig)
 	SwaggerModule.setup('docs', app, documentFactory)
 
-	await app.listen(configService.get('BACKEND_PORT') ?? 3000, () => {
+	// BACKEND_PORT in .env is the *host-published* port (see docker-compose.prod.yml);
+	// inside the container the app always listens on the fixed port 3000 (Dockerfile EXPOSE 3000).
+	await app.listen(3000, () => {
 		app.getUrl()
 			.then((url) => logger.verbose(`Application running at ${url}`))
 			.catch((err) => logger.error(err))
