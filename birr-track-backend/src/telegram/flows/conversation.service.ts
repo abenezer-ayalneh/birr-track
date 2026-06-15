@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Ctx, Hears, On, Start, Update } from 'nestjs-telegraf'
-import { Markup } from 'telegraf'
+import { Ctx, Hears, InjectBot, On, Start, Update } from 'nestjs-telegraf'
+import { Markup, Telegraf } from 'telegraf'
 import { Message, User as TelegramUser } from 'telegraf/types'
 
 import { BusinessesService } from '../../businesses/businesses.service'
@@ -10,7 +10,14 @@ import { InvitesService } from '../../invites/invites.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
-import { INVITE_ROLE_BUTTONS, REGISTER_OR_INVITE_MESSAGE, REGISTER_SUCCESS_MESSAGE, WELCOME_MESSAGE_REGISTERED } from '../telegram.constants'
+import {
+	INVITE_ROLE_BUTTONS,
+	REGISTER_OR_INVITE_MESSAGE,
+	REGISTER_SUCCESS_MESSAGE,
+	TELEGRAM_BOT_NAME,
+	WELCOME_MESSAGE_PLATFORM_OWNER,
+	WELCOME_MESSAGE_REGISTERED,
+} from '../telegram.constants'
 
 interface ConversationSession extends Record<string, unknown> {
 	registering?: boolean
@@ -20,15 +27,39 @@ interface ConversationSession extends Record<string, unknown> {
 
 @Injectable()
 @Update()
-export class ConversationService {
+export class ConversationService implements OnModuleInit {
 	private readonly logger = new Logger(ConversationService.name)
 
 	constructor(
+		@InjectBot(TELEGRAM_BOT_NAME) private readonly bot: Telegraf,
 		private readonly configService: ConfigService,
 		private readonly usersService: UsersService,
 		private readonly businessesService: BusinessesService,
 		private readonly invitesService: InvitesService,
 	) {}
+
+	/**
+	 * Set a global Mini App menu button (the persistent button beside the chat input) on startup so
+	 * every user — including the env-bootstrapped Platform Owner, who has no `users` row — can open
+	 * the admin panel without depending on a reply keyboard that is only sent on certain flows.
+	 */
+	async onModuleInit(): Promise<void> {
+		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
+		// Telegram only accepts an HTTPS URL for a web_app menu button; skip in local/http dev.
+		if (!miniAppUrl.startsWith('https://')) {
+			this.logger.warn(`Skipping global Mini App menu button: FRONTEND_APP_URL is not HTTPS (${miniAppUrl})`)
+			return
+		}
+
+		try {
+			await this.bot.telegram.setChatMenuButton({
+				menuButton: { type: 'web_app', text: 'Open App', web_app: { url: miniAppUrl } },
+			})
+			this.logger.log('Global Mini App menu button configured')
+		} catch (err) {
+			this.logger.error(`Failed to set global Mini App menu button: ${describeError(err)}`)
+		}
+	}
 
 	@Start()
 	async handleStart(@Ctx() ctx: IdentifiedContext): Promise<void> {
@@ -40,6 +71,14 @@ export class ConversationService {
 		if (ctx.state.user) {
 			const greeting = WELCOME_MESSAGE_REGISTERED.replace('{businessName}', ctx.state.business?.name || 'your business')
 			await ctx.reply(greeting, this.getMainMenu())
+			return
+		}
+
+		// The Platform Owner is identified by env (PLATFORM_OWNER_TELEGRAM_ID) and has no `users` row,
+		// so without this branch they would fall through to the register-a-business flow. Greet them
+		// and surface the admin panel instead.
+		if (ctx.state.isPlatformOwner) {
+			await ctx.reply(WELCOME_MESSAGE_PLATFORM_OWNER, this.getPlatformOwnerMenu())
 			return
 		}
 
@@ -219,6 +258,11 @@ export class ConversationService {
 			[Markup.button.webApp('📊 Open Admin Panel', miniAppUrl)],
 			[Markup.button.text('📸 Submit Receipt'), Markup.button.text('/invite')],
 		]).resize()
+	}
+
+	private getPlatformOwnerMenu() {
+		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
+		return Markup.keyboard([[Markup.button.webApp('📊 Open Admin Panel', miniAppUrl)]]).resize()
 	}
 
 	private getRegisterOrInviteKeyboard() {

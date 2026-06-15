@@ -94,9 +94,9 @@ export class AuthService {
 			throw new UnauthorizedException('Invalid initData: missing user')
 		}
 
-		let user: { id: string }
+		let user: { id: number | string }
 		try {
-			user = JSON.parse(userStr) as { id: string }
+			user = JSON.parse(userStr) as { id: number | string }
 		} catch {
 			throw new UnauthorizedException('Invalid initData: user is not valid JSON')
 		}
@@ -106,7 +106,9 @@ export class AuthService {
 		}
 
 		return {
-			telegramUserId: user.id,
+			// Telegram sends user.id as a JSON number; the rest of the app treats
+			// telegramUserId as a string (entity column, env var, bot flows).
+			telegramUserId: String(user.id),
 			auth_date: authDate,
 			hash: providedHash,
 		}

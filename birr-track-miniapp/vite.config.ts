@@ -5,7 +5,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Expose on the LAN so the app can be tunneled into Telegram during development.
     host: true,
+    // Allow the tunnel hostname through Vite 6's host check.
+    allowedHosts: ['local-app.abenezer-ayalneh.dev'],
+    // Route HMR over the public HTTPS tunnel (wss on 443) instead of ws://localhost.
+    hmr: {
+      host: 'local-app.abenezer-ayalneh.dev',
+      protocol: 'wss',
+      clientPort: 443,
+    },
   },
 })

@@ -232,9 +232,24 @@ docker compose -f docker-compose.prod.yml exec minio sh -c \
 
 > **Prerequisite:** `.env` must contain `TELEGRAM_WEBHOOK_PATH=/telegram/webhook` (it's in `.env.production.example`). The backend's auth guard only treats this path as public when this var is set — otherwise every webhook POST is rejected with **403 Forbidden**. If you set it after first deploy, re-source `.env` and recreate the backend.
 
-The backend route is `POST /telegram/webhook/:secret` — the **trailing path segment is required** or Nest returns `Cannot POST /telegram/webhook`. Put the secret in the path *and* in `secret_token` (the header is what's actually verified; the path value just makes the route resolve):
+The backend route is `POST /telegram/webhook/:secret` — the **trailing path segment is required**, and it must be the **real secret**. Two failure modes to avoid:
+- URL `/telegram/webhook` (no segment) → Nest returns `Cannot POST /telegram/webhook`.
+- URL `/telegram/webhook/` (empty segment, from an unset `$TELEGRAM_WEBHOOK_SECRET`) → Nest returns `Cannot POST /telegram/webhook/`.
+
+**Preferred — use the bundled script** (validates inputs, falls back to a non-empty secret, drops stale pending updates). Run it *inside the container* so it reads the already-correct env, sidestepping shell-variable mistakes:
 
 ```bash
+docker compose -f docker-compose.prod.yml exec backend node dist/src/scripts/setup-telegram-webhook.js
+```
+
+It prints the final URL and `getWebhookInfo`. Confirm the URL ends with your real secret, not a bare `/telegram/webhook/`.
+
+**Alternative — manual curl.** You **must** source `.env` first and confirm the secret is non-empty, or you'll set an empty-secret URL:
+
+```bash
+cd /home/birr-track && set -a && source .env && set +a
+[ -n "$TELEGRAM_WEBHOOK_SECRET" ] && echo "secret OK (len ${#TELEGRAM_WEBHOOK_SECRET})" || { echo "EMPTY — do not proceed"; }
+
 curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
   -d "{
@@ -437,6 +452,7 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | RunPod FAILED | Missing adapter files | Attach a temp Pod with the volume (mounts at `/workspace`) and verify `/workspace/adapter/adapter_config.json` exists — it appears at `/runpod-volume/adapter/...` inside the Serverless worker |
 | RunPod `502: PEFT inference failed: cannot identify image file` | The decoded base64 isn't a valid image. Usual causes: the request inlined `$(base64 …)` in **single quotes** (so the literal `$(…)` string was sent, not the image), the file is HEIC/PDF/non-image, or a `data:` URI prefix slipped into the base64 | Use the Step 19 `python3` encoder to build the payload (no quoting traps). Confirm `file <image>` reports JPEG/PNG; convert HEIC with `sips -s format jpeg in.heic --out out.jpg` |
 | Backend logs `NotFoundException: Cannot POST /telegram/webhook` | The webhook URL is missing the trailing secret segment — the route is `POST /telegram/webhook/:secret`, not `/telegram/webhook` | Re-run Step 12 with the URL ending in `/telegram/webhook/${TELEGRAM_WEBHOOK_SECRET}` |
+| Backend logs `NotFoundException: Cannot POST /telegram/webhook/` (trailing slash, **empty** segment) | The webhook was set with an empty secret — a `setWebhook` curl ran with `$TELEGRAM_WEBHOOK_SECRET` unset (`.env` not sourced), producing `/telegram/webhook/` | Re-register with the bundled script: `docker compose -f docker-compose.prod.yml exec backend node dist/src/scripts/setup-telegram-webhook.js` (or source `.env` and verify the secret is non-empty before the curl) |
 | `getWebhookInfo` shows `Wrong response from the webhook: 403 Forbidden` (route resolves but is rejected) | `TELEGRAM_WEBHOOK_PATH` isn't set in `.env`, so the auth guard doesn't treat `/telegram/webhook/*` as public and rejects the unauthenticated POST (a Nest guard returning `false` yields **403**, not 401) | Add `TELEGRAM_WEBHOOK_PATH=/telegram/webhook` to `.env`, then `set -a && source .env && set +a` and `docker compose -f docker-compose.prod.yml up -d --force-recreate backend` |
 | Backend logs `Invalid Telegram webhook secret token` (401) | The `secret_token` Telegram sends (header) doesn't match `TELEGRAM_WEBHOOK_SECRET` in `.env` | Re-run Step 12 with the correct `secret_token`; ensure `.env` is sourced so both sides use the same value |
 | `getWebhookInfo` shows `403 Forbidden`, but a **direct** POST to the backend (`curl http://127.0.0.1:${BACKEND_PORT:-3004}/telegram/webhook/$SECRET` with the secret header) returns `200` | The 403 is injected by the **Cloudflare proxy**, not your app — `getWebhookInfo` shows a `104.21.x.x`/`172.67.x.x` IP, and Cloudflare's Bot Fight Mode/WAF blocks Telegram's POSTs before they reach Caddy | Set the `birr-track-api` record to **DNS-only (grey cloud)** so Telegram hits Caddy directly, then verify `curl -I https://birr-track-api.abenezer-ayalneh.dev/health` is `200`. To keep the proxy instead: disable Bot Fight Mode and add a WAF rule to Skip/Allow path `/telegram/webhook*` |
