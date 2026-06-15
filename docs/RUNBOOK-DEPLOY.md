@@ -1,7 +1,7 @@
 # Runbook: Full Deployment
 
 **Owner:** Abenezer Ayalneh | **Frequency:** As needed
-**Last Updated:** 2026-06-13 | **Last Run:** —
+**Last Updated:** 2026-06-14 | **Last Run:** —
 
 ## Purpose
 
@@ -272,64 +272,81 @@ docker push abenezerayalneh/birr-track-vlm:latest
 
 ### Step 15: Create a RunPod Network Volume
 
-1. Log in to [runpod.io](https://runpod.io)
-2. Go to **Storage** → **Network Volumes**
-3. Create a volume:
+1. Log in to the [RunPod console](https://www.console.runpod.io)
+2. Go to the **Storage** page ([console.runpod.io/user/storage](https://www.console.runpod.io/user/storage))
+3. Click **New Network Volume** and configure:
+   - **Data center:** Pick one in a cheap GPU region (e.g. `EU-RO-1` or `US-KS-2`). The volume is **pinned to this data center**, and any Serverless worker that mounts it can only run there — so choose a region that actually has the GPU you want (Step 17).
    - **Name:** `birr-track-models`
-   - **Size:** 15 GB
-   - **Region:** Pick the cheapest GPU region (e.g. EU-RO-1 or US-TX-3)
-4. Note the volume ID
+   - **Size:** 15 GB (can be increased later, never decreased)
+   - **Storage tier:** **Standard** (High-Performance is overkill for a 7 GB model load)
+4. Click **Create Network Volume** and note the volume name/ID.
 
 ### Step 16: Download model weights to the Network Volume
 
 Create a temporary GPU Pod with the network volume attached:
 
 1. Go to **Pods** → **Deploy**
-2. Pick any cheap GPU (e.g. RTX 3090, Community Cloud)
-3. Under **Network Volume**, attach `birr-track-models` at `/runpod-volume`
-4. Use template: `pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime`
-5. Start the pod, SSH in, then run:
+2. Click **Network Volume** and select `birr-track-models` (this locks the GPU list to the volume's data center)
+3. Pick any cheap GPU offered there (e.g. RTX 3090)
+4. Set the template to `pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime`
+5. Click **Deploy On-Demand**, then open the pod's **web terminal** (or SSH in)
+
+> **Mount path:** On a **Pod** the network volume mounts at **`/workspace`**. The *same* volume mounts at **`/runpod-volume`** on Serverless workers (Step 17). So write the files under `/workspace/...` here, and reference them as `/runpod-volume/...` in the endpoint's env vars later — they are the same bytes, just a different mount point.
 
 ```bash
-pip install huggingface_hub[cli]
+pip install "huggingface_hub[cli]"
 
-HF_HOME=/runpod-volume/hf-cache huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct
+HF_HOME=/workspace/hf-cache huggingface-cli download Qwen/Qwen2.5-VL-3B-Instruct
 
-mkdir -p /runpod-volume/adapter
-# Upload qwen25vl-3b-birrtrack-lora.zip via RunPod web UI or SCP, then:
-cd /runpod-volume/adapter
-unzip /runpod-volume/qwen25vl-3b-birrtrack-lora.zip
-ls /runpod-volume/adapter/
+mkdir -p /workspace/adapter
+# Upload qwen25vl-3b-birrtrack-lora.zip via the RunPod web UI or SCP, then:
+cd /workspace/adapter
+unzip /workspace/qwen25vl-3b-birrtrack-lora.zip
+ls /workspace/adapter/
 ```
 
-**Expected result:** `/runpod-volume/hf-cache` has the base model, `/runpod-volume/adapter` has `adapter_config.json` + `adapter_model.safetensors`.
+**Expected result:** `/workspace/hf-cache` has the base model, `/workspace/adapter` has `adapter_config.json` + `adapter_model.safetensors`. (These will appear at `/runpod-volume/hf-cache` and `/runpod-volume/adapter` inside the Serverless worker.)
 
-6. **Stop and delete the temporary pod** (the network volume persists).
+6. **Stop and terminate the temporary pod** (the network volume persists).
 
 ### Step 17: Create the Serverless Endpoint
 
-1. Go to **Serverless** → **Endpoints** → **New Endpoint**
-2. Configure:
-   - **Name:** `birr-track-vlm`
-   - **Docker Image:** `abenezerayalneh/birr-track-vlm:latest`
-   - **GPU:** RTX 3080 or RTX 3090 (~$0.20–0.40/hr)
-   - **Network Volume:** `birr-track-models` mounted at `/runpod-volume`
-   - **Min Workers:** 0 (scale to zero when idle)
-   - **Max Workers:** 1
-   - **Idle Timeout:** 5 seconds
-   - **Execution Timeout:** 120 seconds
+The RunPod console now asks for a deployment **source** before showing the config form, and several fields were renamed/moved. Follow the current flow exactly:
+
+1. Go to the [**Serverless**](https://www.console.runpod.io/serverless) section and click **New Endpoint**.
+2. For the source, click **Import from Docker Registry**.
+   - In the **Container Image** field, enter `docker.io/abenezerayalneh/birr-track-vlm:latest`, then click **Next**.
+
+   > **Tip:** If you host this repo on GitHub instead, you can pick **Import Git Repository** and let RunPod build the image for you — but this runbook uses the Docker Hub image pushed in Step 14.
+
+3. On the configuration screen, set:
+   - **Endpoint Name:** `birr-track-vlm`
+   - **Endpoint Type:** **Queue** (the backend calls `/runsync`; do **not** pick Load Balancer)
+   - **GPU Configuration:** select a 16 GB+ tier such as **RTX 3090** / **RTX A4000** (~$0.20–0.40/hr). You can add a second/third GPU type as a priority fallback to improve availability — but every type must exist in the network volume's data center (Step 15).
+   - **Active Workers:** `0` (this is the old "Min Workers" — keep at 0 to scale to zero when idle)
+   - **Max Workers:** `1`
+   - **GPUs per Worker:** `1`
+   - **Idle Timeout:** `5` seconds
+   - **FlashBoot:** leave **enabled** (faster cold starts, no extra idle cost)
+   - **Model:** leave empty — the model comes from the network volume, not RunPod's model cache
    - **Environment Variables:**
      - `HF_HOME=/runpod-volume/hf-cache`
      - `LORA_ADAPTER_PATH=/runpod-volume/adapter`
      - `VLM_BACKEND=peft`
      - `HF_BASE_MODEL=Qwen/Qwen2.5-VL-3B-Instruct`
-3. Click **Create**
-4. Note the **Endpoint ID** from the URL
+4. Expand **Advanced** and set:
+   - **Network Volumes:** select `birr-track-models` (mounts at `/runpod-volume`; this also pins the endpoint to the volume's data center)
+   - **Execution Timeout:** `120` seconds (default is 600s)
+   - Leave **Data Centers**, **CUDA Version**, and **Expose HTTP/TCP Ports** at their defaults
+5. Click **Deploy Endpoint**.
+6. Open the new endpoint and copy its **Endpoint ID** (also visible in the endpoint URL `https://api.runpod.ai/v2/<endpoint_id>/`).
+
+> **Note:** "Active Workers" are billed continuously, so keep it at `0`. To attach the network volume *after* creation, use the three-dots menu → **Edit Endpoint** → **Advanced** → **Network Volumes** → **Save Endpoint**.
 
 ### Step 18: Get your API key and update the VPS
 
-1. Go to **Settings** → **API Keys**
-2. Create a new key or copy existing
+1. Go to **Settings** → **API Keys** ([console.runpod.io/user/settings](https://www.console.runpod.io/user/settings))
+2. Create a new key (give it at least **Read/Write** on Serverless) or copy an existing one
 3. Update `.env` on the VPS:
 
 ```bash
@@ -344,19 +361,30 @@ docker compose -f docker-compose.prod.yml up -d --build backend
 
 ### Step 19: Test the VLM Worker
 
-From the VPS (where `.env` is sourced):
+Run this where `.env` is sourced (the VPS, or your machine with the two vars exported).
+
+First confirm the test file is a format Pillow can read — a real **JPEG/PNG**, not an iPhone/macOS **HEIC** (the worker decodes with Pillow, which can't read HEIF):
 
 ```bash
+file ./documents/receipts/cbe_screenshot_1.jpg   # must report "JPEG image data" or "PNG image data"
+# If it says HEIF/HEIC/ISO Media (common on macOS), convert first:
+#   sips -s format jpeg input.heic --out test-receipt.jpg
+```
+
+Build the request body with a real encoder and send it. This avoids the base64 line-wrap and shell-quoting bugs you get from inlining `$(base64 …)` into `-d` (single quotes don't expand `$( )` at all; double quotes need the inner JSON quotes escaped). Works the same on macOS and Linux:
+
+```bash
+IMG=./documents/receipts/cbe_screenshot_1.jpg
+python3 -c "import base64,json,sys;print(json.dumps({'input':{'image_base64':base64.b64encode(open(sys.argv[1],'rb').read()).decode()}}))" "$IMG" > /tmp/vlm-payload.json
+
 curl -s -X POST "https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}/runsync" \
   -H "Authorization: Bearer ${RUNPOD_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"input\": {\"image_base64\": \"$(base64 -i /path/to/test-receipt.jpg)\"}}"
+  --data @/tmp/vlm-payload.json
 ```
 
-> **macOS note:** Use `base64 -i <file>` on macOS. On Linux, use `base64 -w0 <file>`.
-
-**Expected result:** JSON with `status: "COMPLETED"` and extracted Transaction fields (`bankName`, `amount`, etc.).
-**If it fails:** Check endpoint logs in RunPod dashboard → Endpoint → Logs.
+**Expected result:** JSON with `status: "COMPLETED"` and extracted Transaction fields (`bankName`, `amount`, etc.). The first request after idle is slow (~15–30s cold start while the model loads).
+**If it fails:** Check endpoint logs in RunPod dashboard → Endpoint → Logs. For `cannot identify image file`, the bytes the worker received aren't a valid image — re-check the `file` output and make sure you used the `python3` encoder above, not an inline `$(base64 …)`.
 
 ---
 
@@ -395,7 +423,9 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | Caddy 502 Bad Gateway | Backend container not running or port mismatch | `docker compose -f docker-compose.prod.yml logs backend` — verify `BACKEND_PORT` in `.env` matches port in `caddy/birr-track.caddy` |
 | Caddy TLS error | DNS not pointing to VPS / port 80 or 443 blocked | Check `dig` output, `ufw status`, and `journalctl -u caddy` |
 | RunPod TIMEOUT | Model not loaded / wrong volume mount | Check endpoint logs in RunPod dashboard |
-| RunPod FAILED | Missing adapter files | SSH into a temp pod, verify `/runpod-volume/adapter/adapter_config.json` exists |
+| Worker logs `RuntimeError: LORA_ADAPTER_PATH is not set or does not exist` → `worker exited with exit code 1` | The worker can't find `adapter_config.json` at the resolved path. Causes: (a) network volume not attached to the endpoint, (b) `LORA_ADAPTER_PATH` env var missing/typo, or (c) the volume was never populated — the **most common** cause is writing to `/runpod-volume/...` on a **Pod**, which is ephemeral; a Pod mounts the volume at **`/workspace`**, so those files were lost on Pod termination | Attach a Pod with the volume and run `find /workspace -name adapter_config.json`. If nothing is found, re-do Step 16 writing to `/workspace/...`. If it's nested (e.g. `/workspace/adapter/<subdir>/adapter_config.json`), move the files up to `/workspace/adapter/` or point `LORA_ADAPTER_PATH` at the subdir. Verify the endpoint has the volume attached (Advanced → Network Volumes) and `LORA_ADAPTER_PATH=/runpod-volume/adapter` |
+| RunPod FAILED | Missing adapter files | Attach a temp Pod with the volume (mounts at `/workspace`) and verify `/workspace/adapter/adapter_config.json` exists — it appears at `/runpod-volume/adapter/...` inside the Serverless worker |
+| RunPod `502: PEFT inference failed: cannot identify image file` | The decoded base64 isn't a valid image. Usual causes: the request inlined `$(base64 …)` in **single quotes** (so the literal `$(…)` string was sent, not the image), the file is HEIC/PDF/non-image, or a `data:` URI prefix slipped into the base64 | Use the Step 19 `python3` encoder to build the payload (no quoting traps). Confirm `file <image>` reports JPEG/PNG; convert HEIC with `sips -s format jpeg in.heic --out out.jpg` |
 | Telegram webhook not working | Wrong URL or secret | Re-run the webhook curl from Step 12 with sourced `.env` |
 | Admin Panel blank page | `VITE_API_BASE_URL` not set at build time | Rebuild: `docker compose -f docker-compose.prod.yml up -d --build miniapp` |
 | MinIO connection refused | MinIO container not healthy | `docker compose -f docker-compose.prod.yml logs minio` — check `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env` |
@@ -427,7 +457,7 @@ docker tag abenezerayalneh/birr-track-vlm:latest abenezerayalneh/birr-track-vlm:
 docker push abenezerayalneh/birr-track-vlm:v1
 ```
 
-To rollback, update the endpoint's Docker image tag in the RunPod dashboard.
+To rollback, edit the endpoint's **Container Image** tag: three-dots menu → **Edit Endpoint** → update the image to the known-good tag → **Save Endpoint**. RunPod rolls workers to the new image.
 
 ## Estimated Monthly Cost
 
