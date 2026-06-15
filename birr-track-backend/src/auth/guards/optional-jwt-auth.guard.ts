@@ -30,6 +30,14 @@ export class OptionalJwtAuthGuard implements CanActivate {
 	}
 
 	canActivate(context: ExecutionContext): boolean {
+		// HTTP-only guard. Non-HTTP execution contexts (e.g. Telegraf bot updates dispatched by
+		// nestjs-telegraf) have no HTTP request — `getRequest()` returns the Telegraf context, so
+		// `request.path` is undefined and `isPublicRoute` would throw. Those updates are already
+		// authenticated by the webhook secret, so allow them. Mirrors ContextAwareThrottlerGuard.
+		if (context.getType() !== 'http') {
+			return true
+		}
+
 		const request = context.switchToHttp().getRequest<Request>()
 
 		// Check if route is marked as public via decorator
