@@ -104,7 +104,7 @@ Add two A records pointing to your VPS IP:
 | A    | birr-track-telegram-app           | `<VPS_IP>`  | Auto |
 
 **Expected result:** `dig birr-track-api.abenezer-ayalneh.dev` returns your VPS IP.
-**If it fails:** Wait 5–10 minutes for DNS propagation. If using Cloudflare proxy (orange cloud), set it to DNS-only (grey cloud) so Caddy can obtain Let's Encrypt certificates.
+**If it fails:** Wait 5–10 minutes for DNS propagation. **Use Cloudflare DNS-only (grey cloud) for `birr-track-api`** — with the orange-cloud proxy on, Caddy can't complete the Let's Encrypt challenge *and* Cloudflare's bot/WAF protection blocks Telegram's webhook POSTs with `403 Forbidden` (see Troubleshooting). `dig +short` should return your real VPS IP, not a `104.21.x.x`/`172.67.x.x` Cloudflare IP.
 
 ---
 
@@ -230,16 +230,26 @@ docker compose -f docker-compose.prod.yml exec minio sh -c \
 
 ### Step 12: Set up the Telegram webhook
 
+> **Prerequisite:** `.env` must contain `TELEGRAM_WEBHOOK_PATH=/telegram/webhook` (it's in `.env.production.example`). The backend's auth guard only treats this path as public when this var is set — otherwise every webhook POST is rejected with **403 Forbidden**. If you set it after first deploy, re-source `.env` and recreate the backend.
+
+The backend route is `POST /telegram/webhook/:secret` — the **trailing path segment is required** or Nest returns `Cannot POST /telegram/webhook`. Put the secret in the path *and* in `secret_token` (the header is what's actually verified; the path value just makes the route resolve):
+
 ```bash
 curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -H "Content-Type: application/json" \
   -d "{
-    \"url\": \"${TELEGRAM_WEBHOOK_BASE_URL}/telegram/webhook\",
+    \"url\": \"${TELEGRAM_WEBHOOK_BASE_URL}/telegram/webhook/${TELEGRAM_WEBHOOK_SECRET}\",
     \"secret_token\": \"${TELEGRAM_WEBHOOK_SECRET}\"
   }"
 ```
 
 **Expected result:** `{"ok":true,"result":true,"description":"Webhook was set"}`
+
+Confirm it's healthy (no `last_error_message`, `url` ends with the secret, `pending_update_count` drains):
+
+```bash
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
 
 ### Step 13: Verify
 
@@ -426,7 +436,11 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | Worker logs `RuntimeError: LORA_ADAPTER_PATH is not set or does not exist` → `worker exited with exit code 1` | The worker can't find `adapter_config.json` at the resolved path. Causes: (a) network volume not attached to the endpoint, (b) `LORA_ADAPTER_PATH` env var missing/typo, or (c) the volume was never populated — the **most common** cause is writing to `/runpod-volume/...` on a **Pod**, which is ephemeral; a Pod mounts the volume at **`/workspace`**, so those files were lost on Pod termination | Attach a Pod with the volume and run `find /workspace -name adapter_config.json`. If nothing is found, re-do Step 16 writing to `/workspace/...`. If it's nested (e.g. `/workspace/adapter/<subdir>/adapter_config.json`), move the files up to `/workspace/adapter/` or point `LORA_ADAPTER_PATH` at the subdir. Verify the endpoint has the volume attached (Advanced → Network Volumes) and `LORA_ADAPTER_PATH=/runpod-volume/adapter` |
 | RunPod FAILED | Missing adapter files | Attach a temp Pod with the volume (mounts at `/workspace`) and verify `/workspace/adapter/adapter_config.json` exists — it appears at `/runpod-volume/adapter/...` inside the Serverless worker |
 | RunPod `502: PEFT inference failed: cannot identify image file` | The decoded base64 isn't a valid image. Usual causes: the request inlined `$(base64 …)` in **single quotes** (so the literal `$(…)` string was sent, not the image), the file is HEIC/PDF/non-image, or a `data:` URI prefix slipped into the base64 | Use the Step 19 `python3` encoder to build the payload (no quoting traps). Confirm `file <image>` reports JPEG/PNG; convert HEIC with `sips -s format jpeg in.heic --out out.jpg` |
-| Telegram webhook not working | Wrong URL or secret | Re-run the webhook curl from Step 12 with sourced `.env` |
+| Backend logs `NotFoundException: Cannot POST /telegram/webhook` | The webhook URL is missing the trailing secret segment — the route is `POST /telegram/webhook/:secret`, not `/telegram/webhook` | Re-run Step 12 with the URL ending in `/telegram/webhook/${TELEGRAM_WEBHOOK_SECRET}` |
+| `getWebhookInfo` shows `Wrong response from the webhook: 403 Forbidden` (route resolves but is rejected) | `TELEGRAM_WEBHOOK_PATH` isn't set in `.env`, so the auth guard doesn't treat `/telegram/webhook/*` as public and rejects the unauthenticated POST (a Nest guard returning `false` yields **403**, not 401) | Add `TELEGRAM_WEBHOOK_PATH=/telegram/webhook` to `.env`, then `set -a && source .env && set +a` and `docker compose -f docker-compose.prod.yml up -d --force-recreate backend` |
+| Backend logs `Invalid Telegram webhook secret token` (401) | The `secret_token` Telegram sends (header) doesn't match `TELEGRAM_WEBHOOK_SECRET` in `.env` | Re-run Step 12 with the correct `secret_token`; ensure `.env` is sourced so both sides use the same value |
+| `getWebhookInfo` shows `403 Forbidden`, but a **direct** POST to the backend (`curl http://127.0.0.1:${BACKEND_PORT:-3004}/telegram/webhook/$SECRET` with the secret header) returns `200` | The 403 is injected by the **Cloudflare proxy**, not your app — `getWebhookInfo` shows a `104.21.x.x`/`172.67.x.x` IP, and Cloudflare's Bot Fight Mode/WAF blocks Telegram's POSTs before they reach Caddy | Set the `birr-track-api` record to **DNS-only (grey cloud)** so Telegram hits Caddy directly, then verify `curl -I https://birr-track-api.abenezer-ayalneh.dev/health` is `200`. To keep the proxy instead: disable Bot Fight Mode and add a WAF rule to Skip/Allow path `/telegram/webhook*` |
+| Telegram webhook not working | Wrong URL or secret | Re-run the webhook curl from Step 12 with sourced `.env`, then check `getWebhookInfo` |
 | Admin Panel blank page | `VITE_API_BASE_URL` not set at build time | Rebuild: `docker compose -f docker-compose.prod.yml up -d --build miniapp` |
 | MinIO connection refused | MinIO container not healthy | `docker compose -f docker-compose.prod.yml logs minio` — check `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env` |
 | `mc`: `S3 API Requests must be made to API port` / bucket `Access Denied` | `mc` hit the console port, or `$STORAGE_*` were empty because the host `.env` wasn't sourced | Use the in-container form in Step 11 (`$MINIO_ROOT_USER`/`$MINIO_ROOT_PASSWORD` against API port 9000) — no host sourcing needed |
