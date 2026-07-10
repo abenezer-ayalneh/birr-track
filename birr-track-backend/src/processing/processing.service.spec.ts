@@ -77,6 +77,7 @@ describe('ProcessingService', () => {
 					useValue: {
 						create: jest.fn(),
 						findDuplicate: jest.fn(),
+						repairIdempotentRedelivery: jest.fn(),
 					},
 				},
 				{
@@ -313,16 +314,47 @@ describe('ProcessingService', () => {
 		})
 
 		it('should detect idempotent redelivery on duplicate key error', async () => {
+			const repairedTransaction: Transaction = {
+				id: 'txn-existing',
+				telegramUserId: '123456789',
+				telegramName: 'John Waiter',
+				businessId: 'biz-1',
+				userId: 'user-1',
+				status: 'recorded',
+				amount: '100.50',
+				transactionId: 'ABC123',
+				timestamp: new Date('2024-01-01T12:00:00Z'),
+				bankName: 'CBE',
+				confidence: 0.95,
+				isDuplicate: false,
+				editedByUploader: false,
+				imageKey: 'receipts/biz-1/img-123',
+				fileUniqueId: 'unique-123',
+				createdAt: new Date(),
+				business: null,
+				user: null,
+				editLogs: [],
+			}
 			jest.spyOn(usersService, 'findByTelegramId').mockResolvedValue(mockUser)
 			jest.spyOn(vlmService, 'extract').mockResolvedValue(mockExtractedData)
 			jest.spyOn(storageService, 'uploadReceiptImage').mockResolvedValue('receipts/biz-1/img-123')
 			jest.spyOn(transactionsService, 'findDuplicate').mockResolvedValue(null)
 			const duplicateKeyError = new Error('duplicate key value violates unique constraint "idx_transaction_idempotency"')
 			jest.spyOn(transactionsService, 'create').mockRejectedValue(duplicateKeyError)
+			jest.spyOn(transactionsService, 'repairIdempotentRedelivery').mockResolvedValue(repairedTransaction)
 
 			await service.processImageJob(mockJobPayload)
 
 			expect(transactionsService.create).toHaveBeenCalled()
+			expect(transactionsService.repairIdempotentRedelivery).toHaveBeenCalledWith(
+				expect.objectContaining({
+					transactionId: 'ABC123',
+					imageKey: 'receipts/biz-1/img-123',
+					fileUniqueId: 'unique-123',
+				}),
+				'recorded',
+			)
+			expect(gateway.emitTransactionNew).toHaveBeenCalledWith(expect.objectContaining({ id: 'txn-existing', amount: 100.5 }))
 		})
 	})
 })

@@ -52,6 +52,45 @@ export class TransactionsService {
 		})
 	}
 
+	async repairIdempotentRedelivery(createTransactionDto: CreateTransactionDto, status: 'recorded' | 'needs_review'): Promise<Transaction | null> {
+		if (!createTransactionDto.businessId || !createTransactionDto.fileUniqueId) {
+			return null
+		}
+
+		const existing = await this.transactionRepository.findOne({
+			where: {
+				businessId: createTransactionDto.businessId,
+				fileUniqueId: createTransactionDto.fileUniqueId,
+			},
+		})
+		if (!existing) {
+			return null
+		}
+
+		if (existing.editedByUploader) {
+			this.logger.log(`Idempotent redelivery found edited transaction ${existing.id}; preserving user edits`)
+			return existing
+		}
+
+		const repaired = this.transactionRepository.create({
+			...existing,
+			telegramName: createTransactionDto.telegramName,
+			userId: createTransactionDto.userId ?? existing.userId,
+			amount: createTransactionDto.amount !== undefined ? createTransactionDto.amount.toFixed(2) : existing.amount,
+			transactionId: createTransactionDto.transactionId ?? existing.transactionId,
+			timestamp: createTransactionDto.timestamp !== undefined ? new Date(createTransactionDto.timestamp) : existing.timestamp,
+			bankName: createTransactionDto.bankName ?? existing.bankName,
+			confidence: createTransactionDto.confidence,
+			isDuplicate: createTransactionDto.isDuplicate,
+			imageKey: createTransactionDto.imageKey ?? existing.imageKey,
+			status,
+		})
+
+		const saved = await this.transactionRepository.save(repaired)
+		this.logger.log(`Repaired idempotent transaction ${saved.id} from redelivered file_unique_id`)
+		return saved
+	}
+
 	async findAll(
 		queryDto: GetTransactionsQueryDto,
 		auth: JwtPayload,

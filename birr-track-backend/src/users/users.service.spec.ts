@@ -95,7 +95,10 @@ describe('UsersService', () => {
 			jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockUser)
 			const result = await service.findByTelegramId('123456789')
 			expect(result).toEqual(mockUser)
-			expect(userRepository.findOne).toHaveBeenCalledWith({ where: { telegramUserId: '123456789', removedAt: expect.any(Object) } })
+			expect(userRepository.findOne).toHaveBeenCalledWith({
+				where: { telegramUserId: '123456789', removedAt: expect.any(Object) },
+				relations: { business: true },
+			})
 		})
 
 		it('should return null when user not found', async () => {

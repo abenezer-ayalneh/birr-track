@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Action, Command, Ctx, InjectBot, On, Start, Update } from 'nestjs-telegraf'
+import { Action, Command, Ctx, InjectBot, Next, On, Start, Update } from 'nestjs-telegraf'
 import { Markup, Telegraf } from 'telegraf'
 import { Message, User as TelegramUser } from 'telegraf/types'
 
@@ -10,7 +10,14 @@ import { InvitesService } from '../../invites/invites.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
-import { INVITE_ROLE_BUTTONS, REGISTER_OR_INVITE_MESSAGE, REGISTER_SUCCESS_MESSAGE, TELEGRAM_BOT_NAME, WELCOME_MESSAGE_REGISTERED } from '../telegram.constants'
+import {
+	INVITE_ROLE_BUTTONS,
+	REGISTER_OR_INVITE_MESSAGE,
+	REGISTER_SUCCESS_MESSAGE,
+	TELEGRAM_BOT_NAME,
+	WELCOME_MESSAGE_PLATFORM_OWNER,
+	WELCOME_MESSAGE_REGISTERED,
+} from '../telegram.constants'
 
 interface ConversationSession extends Record<string, unknown> {
 	registering?: boolean
@@ -70,10 +77,10 @@ export class ConversationService implements OnModuleInit {
 		// The Platform Owner is identified by env (PLATFORM_OWNER_TELEGRAM_ID) and has no `users` row,
 		// so without this branch they would fall through to the register-a-business flow. Greet them
 		// and surface the admin panel instead.
-		// if (ctx.state.isPlatformOwner) {
-		// 	await ctx.reply(WELCOME_MESSAGE_PLATFORM_OWNER, this.getPlatformOwnerMenu())
-		// 	return
-		// }
+		if (ctx.state.isPlatformOwner) {
+			await ctx.reply(WELCOME_MESSAGE_PLATFORM_OWNER, this.getPlatformOwnerMenu())
+			return
+		}
 
 		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username)
 		const redeemed = await this.invitesService.redeem(telegramUserId, displayName)
@@ -167,12 +174,17 @@ export class ConversationService implements OnModuleInit {
 
 	@On('text')
 	async handleRegistrationText(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const message = ctx.message as Message.TextMessage
+		if (message.text?.trim() === '📸 Submit Receipt') {
+			await ctx.reply('Attach or take a receipt photo and send it here.')
+			return
+		}
+
 		const session = (ctx.session || {}) as ConversationSession
 		if (!session?.registering) {
 			return
 		}
 
-		const message = ctx.message as Message.TextMessage
 		const businessName = message.text?.trim()
 		const telegramUserId = ctx.from?.id?.toString()
 
@@ -204,10 +216,11 @@ export class ConversationService implements OnModuleInit {
 	}
 
 	@On('message')
-	async handleUserShared(@Ctx() ctx: IdentifiedContext): Promise<void> {
+	async handleUserShared(@Ctx() ctx: IdentifiedContext, @Next() next?: () => Promise<void>): Promise<void> {
 		const message = ctx.message as unknown
 		const typedMsg = message as { user_shared?: { user_id: number } }
 		if (!typedMsg?.user_shared) {
+			await next?.()
 			return
 		}
 
@@ -249,6 +262,11 @@ export class ConversationService implements OnModuleInit {
 
 	private getRegisterOrInviteKeyboard() {
 		return Markup.keyboard([[Markup.button.text('/register'), Markup.button.text('Ask your manager for an invite')]]).resize()
+	}
+
+	private getPlatformOwnerMenu() {
+		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
+		return Markup.inlineKeyboard([[Markup.button.webApp('Open Admin Panel', miniAppUrl)]])
 	}
 
 	private buildDisplayName(firstName?: string, lastName?: string, username?: string): string {

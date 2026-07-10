@@ -97,4 +97,18 @@ describe('ConversationService', () => {
 			expect(reply).toHaveBeenCalledWith(REGISTER_OR_INVITE_MESSAGE, expect.anything())
 		})
 	})
+
+	describe('handleUserShared', () => {
+		it('passes non-user_shared messages through so photos can reach ReceiptService', async () => {
+			const next = jest.fn().mockResolvedValue(undefined)
+			const ctx = {
+				message: { photo: [{ file_id: 'receipt-file', file_unique_id: 'receipt-uid', width: 1280, height: 960 }] },
+				state: { user: null, business: null, isPlatformOwner: false, isActiveMember: false },
+			} as unknown as IdentifiedContext
+
+			await service.handleUserShared(ctx, next)
+
+			expect(next).toHaveBeenCalledTimes(1)
+		})
+	})
 })

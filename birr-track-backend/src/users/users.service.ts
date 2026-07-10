@@ -32,7 +32,7 @@ export class UsersService {
 
 	/** Active membership only — removed users do not resolve. */
 	async findByTelegramId(telegramUserId: string): Promise<User | null> {
-		return this.userRepository.findOne({ where: { telegramUserId, removedAt: IsNull() } })
+		return this.userRepository.findOne({ where: { telegramUserId, removedAt: IsNull() }, relations: { business: true } })
 	}
 
 	/** Any row, including soft-removed ones (e.g. to reactivate on invite redemption). */

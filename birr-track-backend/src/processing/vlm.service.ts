@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
 
 import { ParsedTransaction } from './types/parsed-transaction.type'
 
@@ -39,17 +39,22 @@ export class VlmService {
 		const timeoutMs = this.getRequestTimeoutMs()
 		const imageBase64 = imageBuffer.toString('base64')
 
-		const response = await axios.post<RunPodSyncResponse>(
-			`https://api.runpod.ai/v2/${endpointId}/runsync`,
-			{ input: { image_base64: imageBase64 } },
-			{
-				headers: {
-					Authorization: `Bearer ${apiKey}`,
-					'Content-Type': 'application/json',
+		let response
+		try {
+			response = await axios.post<RunPodSyncResponse>(
+				`https://api.runpod.ai/v2/${endpointId}/runsync`,
+				{ input: { image_base64: imageBase64 } },
+				{
+					headers: {
+						Authorization: `Bearer ${apiKey}`,
+						'Content-Type': 'application/json',
+					},
+					timeout: timeoutMs,
 				},
-				timeout: timeoutMs,
-			},
-		)
+			)
+		} catch (error: unknown) {
+			throw new Error(`RunPod request failed: ${this.describeAxiosError(error)}`)
+		}
 
 		const { status, output, error } = response.data
 
@@ -94,6 +99,32 @@ export class VlmService {
 		}
 		const parsed = Number(raw)
 		return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_VLM_REQUEST_TIMEOUT_MS
+	}
+
+	private describeAxiosError(error: unknown): string {
+		if (!axios.isAxiosError(error)) {
+			return error instanceof Error ? error.message : JSON.stringify(error)
+		}
+
+		const ax = error as AxiosError
+		const status = ax.response?.status ?? 'n/a'
+		const code = ax.code ?? 'n/a'
+		const body = this.stringifyBody(ax.response?.data)
+		return `message=${ax.message}; code=${code}; status=${status}; body=${body}`
+	}
+
+	private stringifyBody(data: unknown): string {
+		if (data == null) {
+			return '(empty body)'
+		}
+		if (typeof data === 'string') {
+			return data.slice(0, 500)
+		}
+		try {
+			return JSON.stringify(data).slice(0, 500)
+		} catch {
+			return '[unserializable body]'
+		}
 	}
 
 	private nonEmptyString(value: string | null | undefined): string | null {

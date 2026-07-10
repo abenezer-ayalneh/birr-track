@@ -1,3 +1,5 @@
+import * as https from 'node:https'
+
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
@@ -11,6 +13,9 @@ import { TransactionEventsGateway } from '../websocket/transaction-events.gatewa
 import { VlmService } from './vlm.service'
 
 const DEFAULT_TELEGRAM_FILE_TIMEOUT_MS = 30000
+const TELEGRAM_FILE_DOWNLOAD_ATTEMPTS = 3
+const TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_MS = 750
+const TELEGRAM_FILE_DOWNLOAD_MAX_REDIRECTS = 3
 
 type TelegramGetFileResponse = {
 	ok?: boolean
@@ -22,6 +27,7 @@ type TelegramGetFileResponse = {
 export class ProcessingService {
 	private readonly logger = new Logger(ProcessingService.name)
 	private readonly telegramFileTimeoutMs: number
+	private readonly telegramFileDownloadAgent = new https.Agent({ family: 4, keepAlive: false })
 
 	constructor(
 		private readonly configService: ConfigService,
@@ -56,14 +62,16 @@ export class ProcessingService {
 		}
 
 		try {
-			fileUrl = await this.resolveTelegramFileDownloadUrl(payload.fileId)
-			imageBuffer = await this.downloadTelegramFileFromUrl(fileUrl)
-			imageKey = await this.storageService.uploadReceiptImage(imageBuffer, payload.telegramUserId)
+			fileUrl = await this.runProcessingStage('telegram_get_file', payload.telegramUserId, () => this.resolveTelegramFileDownloadUrl(payload.fileId))
+			imageBuffer = await this.runProcessingStage('telegram_download_file', payload.telegramUserId, () => this.downloadTelegramFileFromUrl(fileUrl))
+			imageKey = await this.runProcessingStage('storage_upload_receipt', payload.telegramUserId, () =>
+				this.storageService.uploadReceiptImage(imageBuffer, payload.telegramUserId),
+			)
 
-			parsed = await this.vlmService.extract(imageBuffer)
+			parsed = await this.runProcessingStage('vlm_extract_receipt', payload.telegramUserId, () => this.vlmService.extract(imageBuffer))
 		} catch (err: unknown) {
 			const errorMsg = err instanceof Error ? err.message : JSON.stringify(err)
-			this.logger.error(`VLM processing failed for user ${payload.telegramUserId}: ${errorMsg}`)
+			this.logger.error(`Receipt processing failed for user ${payload.telegramUserId}: ${errorMsg}`)
 		}
 
 		const isComplete = parsed.amount !== null && parsed.transactionId !== null && parsed.timestamp !== null && parsed.bankName !== null
@@ -98,6 +106,15 @@ export class ProcessingService {
 			})
 		} catch (error: unknown) {
 			if (error instanceof Error && error.message.includes('duplicate key')) {
+				const repaired = await this.transactionsService.repairIdempotentRedelivery(createDto, status)
+				if (repaired) {
+					this.transactionEventsGateway.emitTransactionNew({
+						...repaired,
+						amount: repaired.amount !== null ? Number(repaired.amount) : null,
+					})
+					this.logger.log(`Idempotent redelivery repaired transaction ${repaired.id} for file_unique_id ${payload.fileUniqueId}`)
+					return
+				}
 				this.logger.log(`Idempotent redelivery detected for file_unique_id ${payload.fileUniqueId}; transaction already exists`)
 				return
 			}
@@ -105,18 +122,124 @@ export class ProcessingService {
 		}
 	}
 
-	private async downloadTelegramFileFromUrl(fileUrl: string): Promise<Buffer> {
+	private async runProcessingStage<T>(stage: string, telegramUserId: string, operation: () => Promise<T>): Promise<T> {
 		try {
-			const response = await axios.get<ArrayBuffer>(fileUrl, {
-				responseType: 'arraybuffer',
-				timeout: this.telegramFileTimeoutMs,
-			})
-			return Buffer.from(response.data)
-		} catch (err: unknown) {
-			const ax = err as { response?: { status?: number; data?: unknown } }
-			this.logger.warn(`Telegram file download failed HTTP ${ax.response?.status ?? 'n/a'}: ${this.stringifyAxiosBody(ax.response?.data)}`)
-			throw err
+			const result = await operation()
+			this.logger.debug(`Receipt processing stage succeeded: ${stage} user=${telegramUserId}`)
+			return result
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : JSON.stringify(error)
+			throw new Error(`${stage}: ${message}`)
 		}
+	}
+
+	private async downloadTelegramFileFromUrl(fileUrl: string): Promise<Buffer> {
+		let lastError: unknown
+
+		for (let attempt = 1; attempt <= TELEGRAM_FILE_DOWNLOAD_ATTEMPTS; attempt++) {
+			try {
+				return await this.downloadTelegramFileOnce(fileUrl)
+			} catch (error: unknown) {
+				lastError = error
+				const message = error instanceof Error ? error.message : JSON.stringify(error)
+				const retryable = this.isRetriableTelegramDownloadError(error)
+				this.logger.warn(`Telegram file download attempt ${attempt}/${TELEGRAM_FILE_DOWNLOAD_ATTEMPTS} failed: ${message}`)
+
+				if (!retryable || attempt === TELEGRAM_FILE_DOWNLOAD_ATTEMPTS) {
+					break
+				}
+
+				await this.sleep(TELEGRAM_FILE_DOWNLOAD_RETRY_DELAY_MS * attempt)
+			}
+		}
+
+		const finalMessage = lastError instanceof Error ? lastError.message : JSON.stringify(lastError)
+		throw new Error(`Telegram file download failed after ${TELEGRAM_FILE_DOWNLOAD_ATTEMPTS} attempt(s): ${finalMessage}`)
+	}
+
+	private async downloadTelegramFileOnce(fileUrl: string, redirectsRemaining = TELEGRAM_FILE_DOWNLOAD_MAX_REDIRECTS): Promise<Buffer> {
+		return new Promise<Buffer>((resolve, reject) => {
+			const requestUrl = new URL(fileUrl)
+			const request = https.get(requestUrl, { agent: this.telegramFileDownloadAgent, family: 4 }, (response) => {
+				const statusCode = response.statusCode ?? 0
+				const chunks: Buffer[] = []
+
+				this.logger.debug(`Telegram file download response: status=${statusCode}, host=${requestUrl.hostname}`)
+
+				if (this.isRedirectStatus(statusCode)) {
+					const location = response.headers.location
+					response.resume()
+
+					if (!location) {
+						reject(new Error(`Telegram file download redirect ${statusCode} without location`))
+						return
+					}
+
+					if (redirectsRemaining <= 0) {
+						reject(new Error(`Telegram file download exceeded redirect limit at status ${statusCode}`))
+						return
+					}
+
+					const redirectedUrl = new URL(location, requestUrl)
+					this.downloadTelegramFileOnce(redirectedUrl.toString(), redirectsRemaining - 1).then(resolve, reject)
+					return
+				}
+
+				response.on('data', (chunk: Buffer | string) => {
+					chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+				})
+
+				response.on('end', () => {
+					const body = Buffer.concat(chunks)
+					if (statusCode < 200 || statusCode >= 300) {
+						reject(new Error(`Telegram file download HTTP ${statusCode}: ${this.stringifyAxiosBody(body)}`))
+						return
+					}
+					resolve(body)
+				})
+
+				response.on('aborted', () => {
+					reject(new Error('Telegram file download stream aborted'))
+				})
+
+				response.on('error', (error) => {
+					reject(error)
+				})
+			})
+
+			request.on('socket', (socket) => {
+				socket.on('lookup', (_error, address, family) => {
+					this.logger.debug(`Telegram file download DNS resolved: family=${family}, address=${address}`)
+				})
+				socket.on('connect', () => {
+					this.logger.debug('Telegram file download TCP connected')
+				})
+				socket.on('secureConnect', () => {
+					this.logger.debug('Telegram file download TLS connected')
+				})
+			})
+
+			request.setTimeout(this.telegramFileTimeoutMs, () => {
+				request.destroy(new Error(`Telegram file download timed out after ${this.telegramFileTimeoutMs}ms`))
+			})
+
+			request.on('error', (error) => {
+				reject(error)
+			})
+		})
+	}
+
+	private isRedirectStatus(statusCode: number): boolean {
+		return statusCode === 301 || statusCode === 302 || statusCode === 303 || statusCode === 307 || statusCode === 308
+	}
+
+	private isRetriableTelegramDownloadError(error: unknown): boolean {
+		const message = error instanceof Error ? error.message : JSON.stringify(error)
+		return /aborted|timeout|timed out|ECONNRESET|ETIMEDOUT|socket hang up/i.test(message)
+	}
+
+	private async sleep(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms))
 	}
 
 	/**

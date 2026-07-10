@@ -187,4 +187,89 @@ describe('TransactionsService', () => {
 			expect(result).toBeNull()
 		})
 	})
+
+	describe('repairIdempotentRedelivery', () => {
+		it('should repair an unedited needs_review shell with extracted fields', async () => {
+			const existing: Transaction = {
+				...mockTransaction,
+				status: 'needs_review',
+				amount: null,
+				transactionId: null,
+				timestamp: null,
+				bankName: null,
+				confidence: 0,
+				imageKey: null,
+				fileUniqueId: 'unique-123',
+				editedByUploader: false,
+			}
+			const repaired: Transaction = {
+				...existing,
+				status: 'recorded',
+				amount: '9500.00',
+				transactionId: 'FT1',
+				timestamp: new Date('2026-07-09T00:00:00.000Z'),
+				bankName: 'Commercial Bank of Ethiopia',
+				confidence: 0.8,
+				imageKey: 'receipts/2026/07/img.jpg',
+			}
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(existing)
+			jest.spyOn(transactionRepository, 'create').mockReturnValue(repaired)
+			jest.spyOn(transactionRepository, 'save').mockResolvedValue(repaired)
+
+			const result = await service.repairIdempotentRedelivery(
+				{
+					telegramUserId: '123456789',
+					telegramName: 'John Waiter',
+					businessId: 'biz-1',
+					userId: 'user-1',
+					amount: 9500,
+					transactionId: 'FT1',
+					timestamp: '2026-07-09T00:00:00.000Z',
+					bankName: 'Commercial Bank of Ethiopia',
+					confidence: 0.8,
+					isDuplicate: false,
+					imageKey: 'receipts/2026/07/img.jpg',
+					fileUniqueId: 'unique-123',
+				},
+				'recorded',
+			)
+
+			expect(transactionRepository.findOne).toHaveBeenCalledWith({ where: { businessId: 'biz-1', fileUniqueId: 'unique-123' } })
+			expect(transactionRepository.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: existing.id,
+					status: 'recorded',
+					amount: '9500.00',
+					transactionId: 'FT1',
+					imageKey: 'receipts/2026/07/img.jpg',
+				}),
+			)
+			expect(result).toEqual(repaired)
+		})
+
+		it('should preserve transactions already edited by the uploader', async () => {
+			const edited = { ...mockTransaction, editedByUploader: true }
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(edited)
+
+			const result = await service.repairIdempotentRedelivery(
+				{
+					telegramUserId: '123456789',
+					telegramName: 'John Waiter',
+					businessId: 'biz-1',
+					userId: 'user-1',
+					amount: 9500,
+					transactionId: 'FT1',
+					timestamp: '2026-07-09T00:00:00.000Z',
+					bankName: 'Commercial Bank of Ethiopia',
+					confidence: 0.8,
+					isDuplicate: false,
+					fileUniqueId: 'unique-123',
+				},
+				'recorded',
+			)
+
+			expect(transactionRepository.save).not.toHaveBeenCalled()
+			expect(result).toEqual(edited)
+		})
+	})
 })

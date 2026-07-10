@@ -25,9 +25,23 @@ export class ReceiptService {
 		private readonly rateLimitService: RateLimitService,
 	) {}
 
-	@On('photo')
+	@On('message')
 	async handlePhoto(@Ctx() ctx: IdentifiedContext): Promise<void> {
-		const message = ctx.message as Message.PhotoMessage
+		const message = ctx.message as Partial<Message.PhotoMessage> | undefined
+		await this.processPhotoMessage(ctx, message)
+	}
+
+	@On('edited_message')
+	async handleEditedMessage(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const edited = ctx.editedMessage as Partial<Message.PhotoMessage> | undefined
+		await this.processPhotoMessage(ctx, edited)
+	}
+
+	private async processPhotoMessage(ctx: IdentifiedContext, message: Partial<Message.PhotoMessage> | undefined): Promise<void> {
+		this.logger.debug(
+			`Receipt message received: hasPhoto=${Boolean(message?.photo?.length)}, photoSizes=${message?.photo?.length ?? 0}, hasFrom=${Boolean(ctx.from?.id)}`,
+		)
+
 		if (!message || !message.photo || !message.photo.length || !ctx.from?.id) {
 			return
 		}
@@ -83,15 +97,6 @@ export class ReceiptService {
 		await this.sendMediaGroupAck(ctx, message.media_group_id)
 	}
 
-	@On('edited_message')
-	async handleEditedMessage(@Ctx() ctx: IdentifiedContext): Promise<void> {
-		const edited = ctx.editedMessage as Message.PhotoMessage
-		if (!edited || !edited.photo || !edited.photo.length) {
-			return
-		}
-		await this.handlePhoto(ctx)
-	}
-
 	private async sendMediaGroupAck(ctx: IdentifiedContext, mediaGroupId?: string): Promise<void> {
 		if (!mediaGroupId) {
 			await ctx.reply('Received ✓')
@@ -102,7 +107,6 @@ export class ReceiptService {
 		const existing = this.mediaGroupAcks.get(key)
 
 		if (existing) {
-			clearTimeout(existing.timeout)
 			existing.count++
 		} else {
 			const newAck = {

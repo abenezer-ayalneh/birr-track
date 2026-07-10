@@ -12,6 +12,20 @@ Receipt extraction goes through a local Python inference service that calls Olla
 
 ### Run order (local dev)
 
+For the real Telegram submit-Receipt loop, Telegram must be able to reach the
+local backend through HTTPS. Plain `localhost` only works for direct smoke tests;
+use the local tunnel runbook for interactive bot testing:
+[`../docs/RUNBOOK-LOCAL-TUNNEL-DEV.md`](../docs/RUNBOOK-LOCAL-TUNNEL-DEV.md).
+
+Key local Telegram facts:
+
+- `pnpm run start:dev` listens on host port `3000`.
+- Point the tunnel's API hostname at `http://localhost:3000`.
+- Use the dedicated dev bot token in `.env`, not the production bot.
+- Run `pnpm run telegram:webhook` after the backend and tunnel are up.
+- Send a compressed photo to submit a Receipt; the `📸 Submit Receipt` button
+  only explains what to do.
+
 1. **Postgres + Redis** — `docker compose up -d` (in this directory)
 2. **Ollama** — `ollama serve` and `ollama pull qwen2.5vl`
 3. **VLM inference** — see [`../vlm-inference/README.md`](../vlm-inference/README.md):
