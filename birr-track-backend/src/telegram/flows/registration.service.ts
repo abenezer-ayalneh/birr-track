@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { Ctx, On, Update } from 'nestjs-telegraf'
+import { Action, Ctx, Update } from 'nestjs-telegraf'
 
 import { RegistrationsService } from '../../registrations/registrations.service'
 import { describeError } from '../../shared/utils/describe-error.util'
@@ -16,7 +16,7 @@ export class RegistrationService {
 		private readonly usersService: UsersService,
 	) {}
 
-	@On('callback_query')
+	@Action([/^approve_biz_/, /^reject_biz_/])
 	async handleCallbackQuery(@Ctx() ctx: IdentifiedContext): Promise<void> {
 		const cbQuery = ctx.callbackQuery as { data?: string }
 		const data = cbQuery?.data

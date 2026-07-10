@@ -68,7 +68,7 @@ export class AuthService {
 
 		if (expectedHash !== providedHash) {
 			this.logger.warn(`Invalid initData signature: ${providedHash} != ${expectedHash}`)
-			throw new UnauthorizedException('Invalid initData signature')
+			throw new UnauthorizedException('¡Invalid initData signature')
 		}
 
 		// Validate auth_date freshness

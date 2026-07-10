@@ -89,8 +89,6 @@ The Platform Owner is then notified automatically (Part B).
 - **Approved:** `🎉 Your business "<name>" has been approved! You can now start accepting receipts from your team.`
 - **Rejected:** `Your business registration for "<name>" was not approved at this time. Please contact support for details.`
 
-After approval, the owner can open the Admin Panel from the bot's **"📊 Open Admin Panel"** menu button and begin inviting staff (`/invite`) and submitting receipts.
-
 ---
 
 ## Procedure — Part B: Platform Owner (bot operator) side
@@ -133,7 +131,7 @@ Tap: ✅ Approve   (or ❌ Reject)
 #### B2.1: Open the Platform section
 
 ```
-Bot menu ► 📊 Open Admin Panel ► bottom nav ► "Platform" (✅)
+Bot menu ► Open App ► bottom nav ► "Platform" (✅)
 ```
 **Expected result:** The **Platform** page loads (visible only to `platform_owner` role) with two tabs: **Registrations** and **Businesses**. The Registrations tab shows the pending queue — each row lists the business name, registrant display name, @username, Telegram ID, and request date.
 
@@ -157,7 +155,7 @@ Tap: Approve   (or Reject) on the row
 
 After approval, confirm onboarding succeeded:
 
-- [ ] **Owner side:** registrant received the `🎉 … approved!` DM and the bot now shows the **"📊 Open Admin Panel"** menu (i.e. it greets them with *"Welcome back to \<name\>"* on `/start`).
+- [ ] **Owner side:** registrant received the `🎉 … approved!` DM (i.e. it greets them with *"Welcome back to \<name\>"* on `/start`).
 - [ ] **Platform side:** the business no longer appears in the **Registrations** queue and shows as `active` in the **Businesses** tab (or `GET /registrations` no longer returns it).
 - [ ] **DB check (optional, authoritative):**
 

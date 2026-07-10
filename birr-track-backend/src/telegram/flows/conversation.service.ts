@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { Ctx, Hears, InjectBot, On, Start, Update } from 'nestjs-telegraf'
+import { Action, Command, Ctx, InjectBot, On, Start, Update } from 'nestjs-telegraf'
 import { Markup, Telegraf } from 'telegraf'
 import { Message, User as TelegramUser } from 'telegraf/types'
 
@@ -10,14 +10,7 @@ import { InvitesService } from '../../invites/invites.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
-import {
-	INVITE_ROLE_BUTTONS,
-	REGISTER_OR_INVITE_MESSAGE,
-	REGISTER_SUCCESS_MESSAGE,
-	TELEGRAM_BOT_NAME,
-	WELCOME_MESSAGE_PLATFORM_OWNER,
-	WELCOME_MESSAGE_REGISTERED,
-} from '../telegram.constants'
+import { INVITE_ROLE_BUTTONS, REGISTER_OR_INVITE_MESSAGE, REGISTER_SUCCESS_MESSAGE, TELEGRAM_BOT_NAME, WELCOME_MESSAGE_REGISTERED } from '../telegram.constants'
 
 interface ConversationSession extends Record<string, unknown> {
 	registering?: boolean
@@ -77,10 +70,10 @@ export class ConversationService implements OnModuleInit {
 		// The Platform Owner is identified by env (PLATFORM_OWNER_TELEGRAM_ID) and has no `users` row,
 		// so without this branch they would fall through to the register-a-business flow. Greet them
 		// and surface the admin panel instead.
-		if (ctx.state.isPlatformOwner) {
-			await ctx.reply(WELCOME_MESSAGE_PLATFORM_OWNER, this.getPlatformOwnerMenu())
-			return
-		}
+		// if (ctx.state.isPlatformOwner) {
+		// 	await ctx.reply(WELCOME_MESSAGE_PLATFORM_OWNER, this.getPlatformOwnerMenu())
+		// 	return
+		// }
 
 		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username)
 		const redeemed = await this.invitesService.redeem(telegramUserId, displayName)
@@ -103,7 +96,7 @@ export class ConversationService implements OnModuleInit {
 		await ctx.reply(REGISTER_OR_INVITE_MESSAGE, this.getRegisterOrInviteKeyboard())
 	}
 
-	@Hears('/register')
+	@Command('register')
 	async handleRegisterCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
 		const telegramUserId = ctx.from?.id?.toString()
 		if (!telegramUserId) {
@@ -119,6 +112,57 @@ export class ConversationService implements OnModuleInit {
 		session.registering = true
 		ctx.session = session
 		await ctx.reply('What is your business name?')
+	}
+
+	@Command('invite')
+	async handleInviteCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const telegramUserId = ctx.from?.id?.toString()
+		if (!telegramUserId) {
+			return
+		}
+
+		if (!ctx.state.user || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
+			await ctx.reply('Only managers and owners can invite staff.')
+			return
+		}
+
+		const session = (ctx.session || {}) as ConversationSession
+		session.inviting = true
+		ctx.session = session
+
+		const roleButtons = INVITE_ROLE_BUTTONS[ctx.state.user.role as 'manager' | 'owner']
+		const keyboard = Markup.inlineKeyboard(
+			roleButtons.map((role) => [Markup.button.callback(role === 'waiter' ? 'Waiter' : 'Manager', `invite_role_${role}`)]),
+		)
+
+		await ctx.reply('What role would you like to invite?', keyboard)
+	}
+
+	@Action(/^invite_role_\w+$/)
+	async handleCallbackQuery(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		const cbQuery = ctx.callbackQuery as { data?: string }
+		const data = cbQuery?.data
+		if (!data?.startsWith('invite_role_')) {
+			return
+		}
+
+		const match = data.match(/^invite_role_(\w+)$/)
+		if (!match || !match[1]) {
+			return
+		}
+
+		const role = match[1] as 'waiter' | 'manager'
+		const session = (ctx.session || {}) as ConversationSession
+		session.inviteRole = role
+		session.inviting = true
+		ctx.session = session
+
+		const keyboard = Markup.keyboard([[Markup.button.userRequest('Select staff member', 1)]])
+			.resize(true)
+			.oneTime(true)
+
+		await ctx.reply(`Now select the staff member to invite as a ${role}:`, keyboard)
+		await ctx.answerCbQuery()
 	}
 
 	@On('text')
@@ -157,59 +201,6 @@ export class ConversationService implements OnModuleInit {
 		await ctx.reply(REGISTER_SUCCESS_MESSAGE)
 
 		await this.notifyPlatformOwner(ctx, business, ctx.from)
-	}
-
-	@Hears('/invite')
-	async handleInviteCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
-		const telegramUserId = ctx.from?.id?.toString()
-		if (!telegramUserId) {
-			return
-		}
-
-		if (!ctx.state.user || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
-			await ctx.reply('Only managers and owners can invite staff.')
-			return
-		}
-
-		const session = (ctx.session || {}) as ConversationSession
-		session.inviting = true
-		ctx.session = session
-
-		const roleButtons = INVITE_ROLE_BUTTONS[ctx.state.user.role as 'manager' | 'owner']
-		const keyboard = Markup.inlineKeyboard(
-			roleButtons.map((role) => [Markup.button.callback(role === 'waiter' ? 'Waiter' : 'Manager', `invite_role_${role}`)]),
-		)
-
-		await ctx.reply('What role would you like to invite?', keyboard)
-	}
-
-	@On('callback_query')
-	async handleCallbackQuery(@Ctx() ctx: IdentifiedContext): Promise<void> {
-		const cbQuery = ctx.callbackQuery as { data?: string }
-		const data = cbQuery?.data
-		if (!data?.startsWith('invite_role_')) {
-			return
-		}
-
-		const match = data.match(/^invite_role_(\w+)$/)
-		if (!match || !match[1]) {
-			return
-		}
-
-		const role = match[1] as 'waiter' | 'manager'
-		const session = (ctx.session || {}) as ConversationSession
-		session.inviteRole = role
-		session.inviting = true
-		ctx.session = session
-
-		const keyboard = {
-			keyboard: [[{ text: 'Select staff member', request_user: { request_id: 1, user_is_bot: false } }]],
-			resize_keyboard: true,
-			one_time_keyboard: true,
-		} as unknown as Parameters<typeof ctx.reply>[1]
-
-		await ctx.reply(`Now select the staff member to invite as a ${role}:`, keyboard)
-		await ctx.answerCbQuery()
 	}
 
 	@On('message')
@@ -253,16 +244,7 @@ export class ConversationService implements OnModuleInit {
 	}
 
 	private getMainMenu() {
-		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
-		return Markup.keyboard([
-			[Markup.button.webApp('📊 Open Admin Panel', miniAppUrl)],
-			[Markup.button.text('📸 Submit Receipt'), Markup.button.text('/invite')],
-		]).resize()
-	}
-
-	private getPlatformOwnerMenu() {
-		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
-		return Markup.keyboard([[Markup.button.webApp('📊 Open Admin Panel', miniAppUrl)]]).resize()
+		return Markup.keyboard([[Markup.button.text('📸 Submit Receipt'), Markup.button.text('/invite')]]).resize()
 	}
 
 	private getRegisterOrInviteKeyboard() {
