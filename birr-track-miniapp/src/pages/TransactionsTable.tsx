@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation, useSearch } from 'wouter'
 import { useMemo, useState } from 'react'
 import type { Transaction, TransactionStatus } from '../api/types'
+import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { formatEtb, formatShortDate } from '../lib/format'
+import { usePageRefresh } from '../lib/useRefresh'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/waiter.css'
 import '../styles/admin.css'
@@ -70,6 +72,7 @@ export function TransactionsTable() {
     queryKey: ['transactions', 'table', filters],
     queryFn: () => api.listTransactions(filters),
   })
+  usePageRefresh(() => refetch())
 
   // Client-side attention filters (no backend param) layered on the page.
   const items = useMemo(() => {
@@ -127,10 +130,7 @@ export function TransactionsTable() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Transactions</h1>
-        <p className="page-subtitle">All business receipts</p>
-      </div>
+      <PageHeader title="Transactions" subtitle="All business receipts" />
 
       <div className="toolbar">
         <div className="text-muted">{data ? `${data.total} total` : ''}</div>

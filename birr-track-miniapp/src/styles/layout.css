@@ -8,6 +8,9 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  position: relative;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 .navigation {
@@ -55,6 +58,17 @@
   margin-bottom: 16px;
 }
 
+.page-header--with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.page-header-copy {
+  min-width: 0;
+}
+
 .page-title {
   font-size: 18px;
   font-weight: 700;
@@ -64,4 +78,66 @@
 .page-subtitle {
   color: var(--tg-color-subtitle-text);
   font-size: 13px;
+}
+
+.refresh-button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  background-color: var(--tg-color-section-bg);
+  color: var(--tg-color-accent);
+  font-size: 20px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.refresh-button:active {
+  transform: scale(0.94);
+}
+
+.refresh-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.refresh-button--spinning,
+.pull-refresh-icon--spinning {
+  animation: spin 0.7s linear infinite;
+}
+
+.pull-refresh {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background-color: var(--tg-color-bg);
+  color: var(--tg-color-subtitle-text);
+  border: 1px solid var(--tg-color-section-bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  translate: -50% 0;
+  transition: opacity 0.15s;
+}
+
+.pull-refresh--visible {
+  opacity: 1;
+}
+
+.pull-refresh-icon {
+  color: var(--tg-color-accent);
+  font-size: 16px;
+  line-height: 1;
 }

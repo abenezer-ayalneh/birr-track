@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'wouter'
 import { useMemo, useState } from 'react'
 import type { Transaction, TransactionStatus } from '../api/types'
+import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { useRole } from '../lib/useRole'
 import { formatEtb, formatShortDate } from '../lib/format'
+import { usePageRefresh } from '../lib/useRefresh'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/waiter.css'
 
@@ -23,6 +25,7 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
     queryKey: ['transactions', 'mine', { status }],
     queryFn: () => api.listTransactions({ status }),
   })
+  usePageRefresh(() => refetch())
 
   const transactions = useMemo(() => {
     let list: Transaction[] = page?.items ?? []
@@ -33,16 +36,16 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">My Receipts</h1>
-        <p className="page-subtitle">
-          {transactions.length === 0
+      <PageHeader
+        title="My Receipts"
+        subtitle={
+          transactions.length === 0
             ? 'All caught up!'
             : transactions.length === 1
               ? '1 receipt'
-              : `${transactions.length} receipts`}
-        </p>
-      </div>
+              : `${transactions.length} receipts`
+        }
+      />
 
       <div className="filter-tabs">
         {(['needs_review', 'recorded'] as const).map((s) => (

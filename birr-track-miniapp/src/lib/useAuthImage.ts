@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApi } from './useApi'
 
 /**
@@ -12,33 +12,54 @@ export function useAuthImage(transactionId: string | undefined) {
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [loading, setLoading] = useState(false)
+  const objectUrlRef = useRef<string | null>(null)
+  const mountedRef = useRef(false)
+  const requestRef = useRef(0)
 
   useEffect(() => {
-    if (!transactionId) return
-    let active = true
-    let objectUrl: string | null = null
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
+  const clearObjectUrl = useCallback(() => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+    objectUrlRef.current = null
+  }, [])
+
+  const refetchImage = useCallback(async () => {
+    if (!transactionId) return
+
+    const requestId = requestRef.current + 1
+    requestRef.current = requestId
     setLoading(true)
     setError(null)
-    api
-      .getTransactionImage(transactionId)
-      .then((blob) => {
-        if (!active) return
-        objectUrl = URL.createObjectURL(blob)
-        setUrl(objectUrl)
-      })
-      .catch((e: unknown) => {
-        if (active) setError(e instanceof Error ? e : new Error('Failed to load image'))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    try {
+      const blob = await api.getTransactionImage(transactionId)
+      if (!mountedRef.current || requestRef.current !== requestId) return
+      clearObjectUrl()
+      const nextUrl = URL.createObjectURL(blob)
+      objectUrlRef.current = nextUrl
+      setUrl(nextUrl)
+    } catch (e: unknown) {
+      if (!mountedRef.current || requestRef.current !== requestId) return
+      setError(e instanceof Error ? e : new Error('Failed to load image'))
+    } finally {
+      if (mountedRef.current && requestRef.current === requestId) setLoading(false)
+    }
+  }, [api, clearObjectUrl, transactionId])
+
+  useEffect(() => {
+    if (transactionId) {
+      setUrl(null)
+      void refetchImage()
+    }
 
     return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      clearObjectUrl()
     }
-  }, [api, transactionId])
+  }, [clearObjectUrl, refetchImage, transactionId])
 
-  return { url, error, loading }
+  return { url, error, loading, refetchImage }
 }

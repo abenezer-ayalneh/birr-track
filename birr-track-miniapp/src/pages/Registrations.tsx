@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { BusinessListing } from '../api/types'
+import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { formatDate } from '../lib/format'
+import { usePageRefresh } from '../lib/useRefresh'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/admin.css'
 
@@ -18,10 +20,7 @@ export function Registrations() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Platform</h1>
-        <p className="page-subtitle">Approve registrations & manage businesses</p>
-      </div>
+      <PageHeader title="Platform" subtitle="Approve registrations & manage businesses" />
 
       <div className="period-tabs">
         <button className={`period-tab ${tab === 'queue' ? 'active' : ''}`} onClick={() => setTab('queue')}>
@@ -45,6 +44,7 @@ function RegistrationQueue() {
     queryKey: ['registrations'],
     queryFn: () => api.listRegistrations(),
   })
+  usePageRefresh(() => refetch())
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['registrations'] })
@@ -98,6 +98,7 @@ function BusinessList({ statusBadge }: { statusBadge: (s: BusinessListing['statu
     queryKey: ['businesses'],
     queryFn: () => api.listBusinesses(),
   })
+  usePageRefresh(() => refetch())
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['businesses'] })
   const suspend = useMutation({ mutationFn: (id: string) => api.suspendBusiness(id), onSuccess: invalidate })

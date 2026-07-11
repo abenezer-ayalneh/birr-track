@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Invite, StaffMember } from '../api/types'
+import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { useRole } from '../lib/useRole'
 import { formatDate } from '../lib/format'
+import { usePageRefresh } from '../lib/useRefresh'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/admin.css'
 
@@ -25,6 +27,7 @@ export function Staff() {
 
   const staffQuery = useQuery({ queryKey: ['staff'], queryFn: () => api.listStaff() })
   const invitesQuery = useQuery({ queryKey: ['invites'], queryFn: () => api.listInvites() })
+  usePageRefresh(() => Promise.all([staffQuery.refetch(), invitesQuery.refetch()]))
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['staff'] })
@@ -54,10 +57,7 @@ export function Staff() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Staff</h1>
-        <p className="page-subtitle">Team members & pending invites</p>
-      </div>
+      <PageHeader title="Staff" subtitle="Team members & pending invites" />
 
       {inviteHref() ? (
         <a className="invite-button" href={inviteHref()} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', color: '#fff' }}>

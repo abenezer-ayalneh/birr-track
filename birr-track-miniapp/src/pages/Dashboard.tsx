@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'wouter'
 import { useMemo, useState } from 'react'
+import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
+import { usePageRefresh } from '../lib/useRefresh'
 import { formatEtbCompact } from '../lib/format'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/admin.css'
@@ -49,6 +51,7 @@ export function Dashboard() {
     queryFn: () => api.getSummary(range),
     enabled: period !== 'custom' || Boolean(customFrom || customTo),
   })
+  usePageRefresh(() => refetch())
 
   // For deep-linking the table, forward the date window as plain dates.
   const dateQuery = () => {
@@ -66,10 +69,7 @@ export function Dashboard() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Revenue & attention overview</p>
-      </div>
+      <PageHeader title="Dashboard" subtitle="Revenue & attention overview" />
 
       <div className="period-tabs">
         {(['today', 'week', 'month', 'custom'] as const).map((p) => (

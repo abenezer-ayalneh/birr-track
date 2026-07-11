@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Router, Route, Switch } from 'wouter'
 import { useEffect, useState } from 'react'
 import { ApiProvider } from './contexts/ApiProvider'
+import { RefreshProvider } from './contexts/RefreshProvider'
 import { Layout } from './components/Layout'
 import { TransactionsRoute } from './pages/TransactionsRoute'
 import { WaiterEdit } from './pages/WaiterEdit'
@@ -61,9 +62,11 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ApiProvider client={apiClient}>
-        <Router>
-          <AppRoutes />
-        </Router>
+        <RefreshProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
+        </RefreshProvider>
       </ApiProvider>
     </QueryClientProvider>
   )
