@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Action, Command, Ctx, InjectBot, Next, On, Start, Update } from 'nestjs-telegraf'
 import { Markup, Telegraf } from 'telegraf'
-import { Message, User as TelegramUser } from 'telegraf/types'
+import { BotCommand, Message, User as TelegramUser } from 'telegraf/types'
 
 import { BusinessesService } from '../../businesses/businesses.service'
 import { Business } from '../../businesses/entities/business.entity'
@@ -11,6 +11,13 @@ import { describeError } from '../../shared/utils/describe-error.util'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
 import {
+	BOT_DESCRIPTION,
+	BOT_SHORT_DESCRIPTION,
+	HELP_MESSAGE_MANAGER,
+	HELP_MESSAGE_OWNER,
+	HELP_MESSAGE_PLATFORM_OWNER,
+	HELP_MESSAGE_UNKNOWN,
+	HELP_MESSAGE_WAITER,
 	INVITE_ROLE_BUTTONS,
 	REGISTER_OR_INVITE_MESSAGE,
 	REGISTER_SUCCESS_MESSAGE,
@@ -24,6 +31,29 @@ interface ConversationSession extends Record<string, unknown> {
 	inviting?: boolean
 	inviteRole?: 'waiter' | 'manager'
 }
+
+const COMMANDS_UNKNOWN: BotCommand[] = [
+	{ command: 'start', description: 'Start or refresh your session' },
+	{ command: 'help', description: 'Show what this bot can do' },
+	{ command: 'register', description: 'Register a Business' },
+]
+
+const COMMANDS_WAITER: BotCommand[] = [
+	{ command: 'start', description: 'Refresh your menu' },
+	{ command: 'help', description: 'Show help' },
+]
+
+const COMMANDS_MANAGER: BotCommand[] = [
+	...COMMANDS_WAITER,
+	{ command: 'invite', description: 'Invite a Waiter' },
+]
+
+const COMMANDS_OWNER: BotCommand[] = [
+	...COMMANDS_WAITER,
+	{ command: 'invite', description: 'Invite a Waiter or Manager' },
+]
+
+const COMMANDS_PLATFORM_OWNER = COMMANDS_WAITER
 
 @Injectable()
 @Update()
@@ -44,6 +74,9 @@ export class ConversationService implements OnModuleInit {
 	 * the admin panel without depending on a reply keyboard that is only sent on certain flows.
 	 */
 	async onModuleInit(): Promise<void> {
+		await this.configureBotProfile()
+		await this.configureDefaultCommands()
+
 		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
 		// Telegram only accepts an HTTPS URL for a web_app menu button; skip in local/http dev.
 		if (!miniAppUrl.startsWith('https://')) {
@@ -67,6 +100,7 @@ export class ConversationService implements OnModuleInit {
 		if (!telegramUserId || !ctx.from) {
 			return
 		}
+		await this.refreshChatCommands(ctx)
 
 		if (ctx.state.user) {
 			const greeting = WELCOME_MESSAGE_REGISTERED.replace('{businessName}', ctx.state.business?.name || 'your business')
@@ -103,12 +137,19 @@ export class ConversationService implements OnModuleInit {
 		await ctx.reply(REGISTER_OR_INVITE_MESSAGE, this.getRegisterOrInviteKeyboard())
 	}
 
+	@Command('help')
+	async handleHelpCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		await this.refreshChatCommands(ctx)
+		await ctx.reply(this.getHelpMessage(ctx))
+	}
+
 	@Command('register')
 	async handleRegisterCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
 		const telegramUserId = ctx.from?.id?.toString()
 		if (!telegramUserId) {
 			return
 		}
+		await this.refreshChatCommands(ctx)
 
 		if (ctx.state.user) {
 			await ctx.reply('You are already registered with ' + (ctx.state.business?.name || 'Birr Track') + '.')
@@ -127,6 +168,7 @@ export class ConversationService implements OnModuleInit {
 		if (!telegramUserId) {
 			return
 		}
+		await this.refreshChatCommands(ctx)
 
 		if (!ctx.state.user || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
 			await ctx.reply('Only managers and owners can invite staff.')
@@ -174,6 +216,8 @@ export class ConversationService implements OnModuleInit {
 
 	@On('text')
 	async handleRegistrationText(@Ctx() ctx: IdentifiedContext): Promise<void> {
+		await this.refreshChatCommands(ctx)
+
 		const message = ctx.message as Message.TextMessage
 		if (message.text?.trim() === '📸 Submit Receipt') {
 			await ctx.reply('Attach or take a receipt photo and send it here.')
@@ -217,6 +261,8 @@ export class ConversationService implements OnModuleInit {
 
 	@On('message')
 	async handleUserShared(@Ctx() ctx: IdentifiedContext, @Next() next?: () => Promise<void>): Promise<void> {
+		await this.refreshChatCommands(ctx)
+
 		const message = ctx.message as unknown
 		const typedMsg = message as { user_shared?: { user_id: number } }
 		if (!typedMsg?.user_shared) {
@@ -253,6 +299,73 @@ export class ConversationService implements OnModuleInit {
 			const errorMsg = err instanceof Error ? err.message : 'Failed to create invite'
 			await ctx.reply(`Error: ${errorMsg}`, Markup.removeKeyboard())
 			this.logger.error(`Failed to create invite: ${describeError(err)}`)
+		}
+	}
+
+	private async configureBotProfile(): Promise<void> {
+		try {
+			await this.bot.telegram.setMyShortDescription(BOT_SHORT_DESCRIPTION)
+			await this.bot.telegram.setMyDescription(BOT_DESCRIPTION)
+			this.logger.log('Bot profile descriptions configured')
+		} catch (err) {
+			this.logger.error(`Failed to configure bot profile descriptions: ${describeError(err)}`)
+		}
+	}
+
+	private async configureDefaultCommands(): Promise<void> {
+		try {
+			await this.bot.telegram.setMyCommands(COMMANDS_UNKNOWN)
+			this.logger.log('Default bot commands configured')
+		} catch (err) {
+			this.logger.error(`Failed to configure default bot commands: ${describeError(err)}`)
+		}
+	}
+
+	private async refreshChatCommands(ctx: IdentifiedContext): Promise<void> {
+		if (!ctx.chat?.id) {
+			return
+		}
+
+		try {
+			await this.bot.telegram.setMyCommands(this.getCommandsForContext(ctx), {
+				scope: { type: 'chat', chat_id: ctx.chat.id },
+			})
+		} catch (err) {
+			this.logger.error(`Failed to refresh chat commands for chat ${ctx.chat.id}: ${describeError(err)}`)
+		}
+	}
+
+	private getCommandsForContext(ctx: IdentifiedContext): BotCommand[] {
+		if (ctx.state.isPlatformOwner && !ctx.state.user) {
+			return COMMANDS_PLATFORM_OWNER
+		}
+
+		switch (ctx.state.user?.role) {
+			case 'owner':
+				return COMMANDS_OWNER
+			case 'manager':
+				return COMMANDS_MANAGER
+			case 'waiter':
+				return COMMANDS_WAITER
+			default:
+				return COMMANDS_UNKNOWN
+		}
+	}
+
+	private getHelpMessage(ctx: IdentifiedContext): string {
+		if (ctx.state.isPlatformOwner && !ctx.state.user) {
+			return HELP_MESSAGE_PLATFORM_OWNER
+		}
+
+		switch (ctx.state.user?.role) {
+			case 'owner':
+				return HELP_MESSAGE_OWNER
+			case 'manager':
+				return HELP_MESSAGE_MANAGER
+			case 'waiter':
+				return HELP_MESSAGE_WAITER
+			default:
+				return HELP_MESSAGE_UNKNOWN
 		}
 	}
 
