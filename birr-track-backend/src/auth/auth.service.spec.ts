@@ -5,11 +5,13 @@ import { createHmac } from 'crypto'
 
 import { User } from '../users/entities/user.entity'
 import { UsersService } from '../users/users.service'
+import { AdminPanelSessionService } from './admin-panel-session.service'
 import { AuthService } from './auth.service'
 
 describe('AuthService', () => {
 	let service: AuthService
 	let usersService: UsersService
+	let adminPanelSessions: AdminPanelSessionService
 
 	const mockBotToken = 'test-bot-token-12345'
 	const mockJwtSecret = 'test-jwt-secret-key'
@@ -21,6 +23,7 @@ describe('AuthService', () => {
 		displayName: 'Test User',
 		businessId: 'business-1',
 		role: 'waiter' as const,
+		language: 'en',
 		removedAt: null,
 		createdAt: new Date(),
 		business: null,
@@ -50,11 +53,46 @@ describe('AuthService', () => {
 						}),
 					},
 				},
+				{
+					provide: AdminPanelSessionService,
+					useValue: {
+						create: jest.fn().mockResolvedValue({
+							sessionId: 'session-1',
+							refreshToken: 'refresh-1',
+							expiresAt: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
+							idleExpiresAt: Math.floor(Date.now() / 1000) + 30 * 60,
+							accessTokenExpiresInSeconds: 15 * 60,
+						}),
+						renew: jest.fn().mockResolvedValue({
+							record: {
+								sessionId: 'session-1',
+								refreshTokenHash: 'hash',
+								payload: {
+									userId: 'user-1',
+									businessId: 'business-1',
+									role: 'waiter',
+									telegramUserId: '123456789',
+									sessionId: 'session-1',
+								},
+								createdAt: Math.floor(Date.now() / 1000),
+								lastRenewedAt: Math.floor(Date.now() / 1000),
+								expiresAt: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
+								idleExpiresAt: Math.floor(Date.now() / 1000) + 30 * 60,
+							},
+							expiresAt: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
+							idleExpiresAt: Math.floor(Date.now() / 1000) + 30 * 60,
+							accessTokenExpiresInSeconds: 15 * 60,
+						}),
+						revoke: jest.fn(),
+						getAccessTokenTtlSeconds: jest.fn().mockReturnValue(15 * 60),
+					},
+				},
 			],
 		}).compile()
 
 		service = module.get<AuthService>(AuthService)
 		usersService = module.get<UsersService>(UsersService)
+		adminPanelSessions = module.get<AdminPanelSessionService>(AdminPanelSessionService)
 	})
 
 	describe('validateInitData', () => {
@@ -167,8 +205,14 @@ describe('AuthService', () => {
 
 			expect(result.response.role).toBe('platform_owner')
 			expect(result.response.userId).toBeNull()
+			expect(result.response.sessionId).toBe('session-1')
+			expect(result.response.refreshToken).toBe('refresh-1')
 			expect(result.payload.role).toBe('platform_owner')
+			expect(result.payload.sessionId).toBe('session-1')
 			expect(result.payload.telegramUserId).toBe(mockPlatformOwnerId)
+			expect(adminPanelSessions.create).toHaveBeenCalledWith(
+				expect.objectContaining({ role: 'platform_owner', telegramUserId: mockPlatformOwnerId }),
+			)
 		})
 
 		it('should authenticate regular user', async () => {
@@ -195,6 +239,8 @@ describe('AuthService', () => {
 			expect(result.response.userId).toBe('user-1')
 			expect(result.response.businessId).toBe('business-1')
 			expect(result.response.displayName).toBe('Test User')
+			expect(result.response.sessionId).toBe('session-1')
+			expect(result.response.refreshToken).toBe('refresh-1')
 		})
 
 		it('should throw when regular user not found', async () => {
@@ -216,6 +262,28 @@ describe('AuthService', () => {
 			jest.spyOn(usersService, 'findByTelegramId').mockResolvedValue(null)
 
 			await expect(service.authenticateFromInitData(initData)).rejects.toThrow(UnauthorizedException)
+		})
+	})
+
+	describe('refreshAdminPanelSession', () => {
+		it('should renew an Admin Panel Session without revalidating Telegram initData', async () => {
+			jest.spyOn(usersService, 'findByTelegramId').mockResolvedValue(mockUser)
+
+			const result = await service.refreshAdminPanelSession({ sessionId: 'session-1', refreshToken: 'refresh-1' })
+
+			expect(adminPanelSessions.renew).toHaveBeenCalledWith('session-1', 'refresh-1')
+			expect(result.response.accessToken).toBeTruthy()
+			expect(result.response.sessionId).toBe('session-1')
+			expect(result.response.refreshToken).toBe('refresh-1')
+			expect(result.response.role).toBe('waiter')
+			expect(result.response.displayName).toBe('Test User')
+			expect(result.payload.sessionId).toBe('session-1')
+		})
+
+		it('should revoke an Admin Panel Session on logout', async () => {
+			await service.logout({ sessionId: 'session-1', refreshToken: 'refresh-1' })
+
+			expect(adminPanelSessions.revoke).toHaveBeenCalledWith('session-1')
 		})
 	})
 })

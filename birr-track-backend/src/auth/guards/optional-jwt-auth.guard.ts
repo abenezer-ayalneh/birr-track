@@ -6,6 +6,7 @@ import { Reflector } from '@nestjs/core'
 import { createHmac } from 'crypto'
 import { Request } from 'express'
 
+import { AdminPanelSessionService } from '../admin-panel-session.service'
 import { JwtPayload } from '../auth.service'
 import { PUBLIC_ROUTE_KEY } from '../decorators/public-route.decorator'
 
@@ -15,6 +16,8 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
 	private readonly publicRoutes = [
 		'/auth/telegram',
+		'/auth/refresh',
+		'/auth/logout',
 		'/health',
 		// Telegram webhook route is added dynamically from env
 	]
@@ -22,6 +25,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
 	constructor(
 		private readonly configService: ConfigService,
 		private readonly reflector: Reflector,
+		private readonly adminPanelSessions: AdminPanelSessionService,
 	) {
 		const webhookPath = this.configService.get<string>('TELEGRAM_WEBHOOK_PATH')?.trim()
 		if (webhookPath) {
@@ -29,7 +33,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
 		}
 	}
 
-	canActivate(context: ExecutionContext): boolean {
+	async canActivate(context: ExecutionContext): Promise<boolean> {
 		// HTTP-only guard. Non-HTTP execution contexts (e.g. Telegraf bot updates dispatched by
 		// nestjs-telegraf) have no HTTP request — `getRequest()` returns the Telegraf context, so
 		// `request.path` is undefined and `isPublicRoute` would throw. Those updates are already
@@ -67,6 +71,10 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
 		// Validate token expiry
 		if (payload.exp < Math.floor(Date.now() / 1000)) {
+			return false
+		}
+
+		if (!(await this.adminPanelSessions.assertActive(payload.sessionId))) {
 			return false
 		}
 

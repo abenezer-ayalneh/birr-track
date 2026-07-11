@@ -6,6 +6,10 @@ Ethiopian receipt-tracking platform: staff submit payment receipts through a Tel
 
 ### People & Roles
 
+**Language Preference**:
+A person's selected interface language for Birr Track bot and Admin Panel text. Supported values are English and Amharic. Registered users keep this preference on their Birr Track profile; unregistered people may be asked again if their chat session is lost before they register or redeem an Invite.
+_Avoid_: locale, translation setting
+
 **Waiter**:
 A staff member of a Business who submits Receipts through the Telegram bot. Identified by their Telegram account.
 _Avoid_: staff, employee, uploader
@@ -59,6 +63,10 @@ _Avoid_: copy, resubmission
 **Admin Panel**:
 The Telegram Mini App where Managers view Transactions, summaries, and manage staff; the Platform Owner additionally approves Business registrations there.
 _Avoid_: dashboard, admin site, web app
+
+**Admin Panel Session**:
+Server-managed authenticated state for an open Admin Panel. Created only after Telegram `initData` validation, renewable while the Admin Panel remains visible, and bounded by idle and absolute expiry.
+_Avoid_: login session, browser session, Telegram session
 
 ### Infrastructure
 

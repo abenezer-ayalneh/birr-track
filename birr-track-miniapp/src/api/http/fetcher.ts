@@ -44,7 +44,11 @@ export class HttpFetcher {
 
     // Token likely expired (JWT lives ~1h). Re-auth once and retry.
     if (res.status === 401 || res.status === 403) {
-      await this.session.refresh()
+      try {
+        await this.session.refresh()
+      } catch {
+        await this.session.ensure()
+      }
       res = await doFetch()
     }
 

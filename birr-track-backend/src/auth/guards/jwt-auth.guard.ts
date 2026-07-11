@@ -5,15 +5,19 @@ import { ConfigService } from '@nestjs/config'
 import { createHmac } from 'crypto'
 import { Request } from 'express'
 
+import { AdminPanelSessionService } from '../admin-panel-session.service'
 import { JwtPayload } from '../auth.service'
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
 	private readonly logger = new Logger(JwtAuthGuard.name)
 
-	constructor(private readonly configService: ConfigService) {}
+	constructor(
+		private readonly configService: ConfigService,
+		private readonly adminPanelSessions: AdminPanelSessionService,
+	) {}
 
-	canActivate(context: ExecutionContext): boolean {
+	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const request = context.switchToHttp().getRequest<Request>()
 		const authHeader = request.headers.authorization
 
@@ -31,6 +35,10 @@ export class JwtAuthGuard implements CanActivate {
 		// Validate token expiry
 		if (payload.exp < Math.floor(Date.now() / 1000)) {
 			throw new UnauthorizedException('Token expired')
+		}
+
+		if (!(await this.adminPanelSessions.assertActive(payload.sessionId))) {
+			throw new UnauthorizedException('Admin Panel Session expired')
 		}
 
 		// Attach to request
