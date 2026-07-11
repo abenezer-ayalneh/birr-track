@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Workbook } from 'exceljs'
 import { Response } from 'express'
@@ -275,6 +275,31 @@ export class TransactionsService {
 
 		this.logger.log(`Transaction ${id} updated by ${editedBy}`)
 		return this.toResponse(updated)
+	}
+
+	async remove(id: string, auth: JwtPayload, storageService: StorageService): Promise<void> {
+		const existing = await this.transactionRepository.findOne({ where: { id } })
+		if (!existing) {
+			throw new NotFoundException(`Transaction ${id} not found`)
+		}
+
+		this.verifyTransactionAccess(existing, auth)
+
+		if (existing.status !== 'needs_review') {
+			throw new ConflictException('Only Needs Review transactions can be deleted')
+		}
+
+		await this.transactionRepository.remove(existing)
+
+		if (!existing.imageKey) {
+			return
+		}
+
+		try {
+			await storageService.deleteObject(existing.imageKey)
+		} catch (error) {
+			this.logger.warn(`Failed to delete image for transaction ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+		}
 	}
 
 	async export(queryDto: GetTransactionsQueryDto, auth: JwtPayload): Promise<Buffer> {

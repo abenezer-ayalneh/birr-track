@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { CreateBucketCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Readable } from 'stream'
@@ -58,6 +58,12 @@ export class StorageService implements OnModuleInit {
 	async getObjectStream(objectKey: string): Promise<Readable> {
 		const response = await this.s3Client.send(new GetObjectCommand({ Bucket: this.bucket, Key: objectKey }))
 		return response.Body as Readable
+	}
+
+	/** Deletes an object from storage. S3-compatible deletes are idempotent. */
+	async deleteObject(objectKey: string): Promise<void> {
+		await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }))
+		this.logger.log(`Deleted storage object ${objectKey}`)
 	}
 
 	private async ensureBucketExists(): Promise<void> {

@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
+import { ConflictException, NotFoundException } from '@nestjs/common'
 import { DataSource, Repository } from 'typeorm'
 
+import { StorageService } from '../storage/storage.service'
 import { CreateTransactionDto } from './dto/create-transaction.dto'
 import { EditLog } from './entities/edit-log.entity'
 import { Transaction } from './entities/transaction.entity'
@@ -44,6 +46,7 @@ describe('TransactionsService', () => {
 						create: jest.fn(),
 						save: jest.fn(),
 						findOne: jest.fn(),
+						remove: jest.fn(),
 						createQueryBuilder: jest.fn(),
 					},
 				},
@@ -270,6 +273,84 @@ describe('TransactionsService', () => {
 
 			expect(transactionRepository.save).not.toHaveBeenCalled()
 			expect(result).toEqual(edited)
+		})
+	})
+
+	describe('remove', () => {
+		const waiterAuth = {
+			userId: 'user-1',
+			businessId: 'biz-1',
+			role: 'waiter' as const,
+			telegramUserId: '123456789',
+			iat: 1,
+			exp: 2,
+		}
+		const managerAuth = {
+			...waiterAuth,
+			userId: 'manager-1',
+			role: 'manager' as const,
+		}
+		const storageService = {
+			deleteObject: jest.fn(),
+		} as unknown as StorageService
+
+		beforeEach(() => {
+			jest.spyOn(transactionRepository, 'remove').mockResolvedValue(mockTransaction)
+			jest.spyOn(storageService, 'deleteObject').mockReset()
+		})
+
+		it('should delete a needs_review transaction within waiter scope', async () => {
+			const needsReview = { ...mockTransaction, status: 'needs_review' as const }
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(needsReview)
+			jest.spyOn(storageService, 'deleteObject').mockResolvedValue(undefined)
+
+			await service.remove(needsReview.id, waiterAuth, storageService)
+
+			expect(transactionRepository.remove).toHaveBeenCalledWith(needsReview)
+			expect(storageService.deleteObject).toHaveBeenCalledWith(needsReview.imageKey)
+		})
+
+		it('should let a manager delete a needs_review transaction in their business', async () => {
+			const needsReview = { ...mockTransaction, status: 'needs_review' as const, userId: 'user-2' }
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(needsReview)
+			jest.spyOn(storageService, 'deleteObject').mockResolvedValue(undefined)
+
+			await service.remove(needsReview.id, managerAuth, storageService)
+
+			expect(transactionRepository.remove).toHaveBeenCalledWith(needsReview)
+		})
+
+		it('should reject waiter deletion of another waiter transaction', async () => {
+			const needsReview = { ...mockTransaction, status: 'needs_review' as const, userId: 'user-2' }
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(needsReview)
+
+			await expect(service.remove(needsReview.id, waiterAuth, storageService)).rejects.toThrow(NotFoundException)
+			expect(transactionRepository.remove).not.toHaveBeenCalled()
+		})
+
+		it('should reject recorded transaction deletion', async () => {
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(mockTransaction)
+
+			await expect(service.remove(mockTransaction.id, waiterAuth, storageService)).rejects.toThrow(ConflictException)
+			expect(transactionRepository.remove).not.toHaveBeenCalled()
+		})
+
+		it('should return not found for a missing transaction', async () => {
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(null)
+
+			await expect(service.remove('missing', waiterAuth, storageService)).rejects.toThrow(NotFoundException)
+			expect(transactionRepository.remove).not.toHaveBeenCalled()
+		})
+
+		it('should still delete the transaction when image cleanup fails', async () => {
+			const needsReview = { ...mockTransaction, status: 'needs_review' as const }
+			jest.spyOn(transactionRepository, 'findOne').mockResolvedValue(needsReview)
+			jest.spyOn(storageService, 'deleteObject').mockRejectedValue(new Error('storage offline'))
+
+			await service.remove(needsReview.id, waiterAuth, storageService)
+
+			expect(transactionRepository.remove).toHaveBeenCalledWith(needsReview)
+			expect(storageService.deleteObject).toHaveBeenCalledWith(needsReview.imageKey)
 		})
 	})
 })

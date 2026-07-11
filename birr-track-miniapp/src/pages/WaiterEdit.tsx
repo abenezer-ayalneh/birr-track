@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'wouter'
 import { useEffect, useState } from 'react'
 import type { TransactionUpdate } from '../api/types'
+import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { useAuthImage } from '../lib/useAuthImage'
 import { fromEatDatetimeLocal, toEatDatetimeLocal } from '../lib/format'
+import { usePageRefresh } from '../lib/useRefresh'
 import { ErrorState, LoadingState } from '../components/States'
 import '../styles/waiter.css'
 
@@ -21,14 +23,16 @@ export function WaiterEdit() {
 
   const id = params?.id as string
   const [saved, setSaved] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
 
-  const { data: tx, isLoading: loadingTx, isError, error } = useQuery({
+  const { data: tx, isLoading: loadingTx, isError, error, refetch } = useQuery({
     queryKey: ['transaction', id],
     queryFn: () => api.getTransaction(id),
     enabled: !!id,
   })
 
-  const { url: imageUrl, loading: imageLoading, error: imageError } = useAuthImage(id)
+  const { url: imageUrl, loading: imageLoading, error: imageError, refetchImage } = useAuthImage(id)
+  usePageRefresh(() => Promise.all([refetch(), refetchImage()]))
 
   const [formData, setFormData] = useState<TransactionUpdate>({
     bankName: '',
@@ -37,9 +41,9 @@ export function WaiterEdit() {
     timestamp: '',
   })
 
-  // Seed the form once the transaction loads.
+  // Seed the form from the server until the user starts editing.
   useEffect(() => {
-    if (tx) {
+    if (tx && !isDirty) {
       setFormData({
         bankName: tx.bankName ?? '',
         amount: tx.amount ?? undefined,
@@ -47,7 +51,12 @@ export function WaiterEdit() {
         timestamp: tx.timestamp ?? '',
       })
     }
-  }, [tx])
+  }, [isDirty, tx])
+
+  function updateField(patch: TransactionUpdate) {
+    setIsDirty(true)
+    setFormData((current) => ({ ...current, ...patch }))
+  }
 
   const updateMutation = useMutation({
     mutationFn: (patch: TransactionUpdate) => api.updateTransaction(id, patch),
@@ -56,9 +65,27 @@ export function WaiterEdit() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
       queryClient.invalidateQueries({ queryKey: ['summary'] })
       setSaved(true)
+      setIsDirty(false)
       setTimeout(() => navigate('/transactions'), 1000)
     },
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteTransaction(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transaction', id] })
+      queryClient.invalidateQueries({ queryKey: ['transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['summary'] })
+      navigate('/transactions')
+    },
+  })
+
+  function onDelete() {
+    if (!window.confirm('Delete this Needs Review transaction? This cannot be undone.')) {
+      return
+    }
+    deleteMutation.mutate()
+  }
 
   if (loadingTx) return <LoadingState />
   if (isError || !tx) {
@@ -76,6 +103,8 @@ export function WaiterEdit() {
       >
         ← Back
       </button>
+
+      <PageHeader title="Transaction" subtitle={tx.status === 'needs_review' ? 'Needs review' : 'Recorded'} />
 
       {imageLoading ? (
         <div className="receipt-image flex-center" style={{ minHeight: 200 }}>
@@ -105,6 +134,12 @@ export function WaiterEdit() {
         </div>
       )}
 
+      {deleteMutation.isError && (
+        <div className="inline-error">
+          {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'Failed to delete'}
+        </div>
+      )}
+
       {saved && <div className="success-message">✓ Saved! Redirecting…</div>}
 
       <div className="form-group">
@@ -113,7 +148,7 @@ export function WaiterEdit() {
           type="text"
           className="form-input"
           value={formData.bankName || ''}
-          onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
+          onChange={(e) => updateField({ bankName: e.target.value })}
           placeholder="e.g., Commercial Bank of Ethiopia"
         />
       </div>
@@ -125,7 +160,7 @@ export function WaiterEdit() {
           className="form-input"
           value={formData.amount ?? ''}
           onChange={(e) =>
-            setFormData({ ...formData, amount: e.target.value ? parseFloat(e.target.value) : undefined })
+            updateField({ amount: e.target.value ? parseFloat(e.target.value) : undefined })
           }
           placeholder="e.g., 2500.00"
           step="0.01"
@@ -140,7 +175,7 @@ export function WaiterEdit() {
           type="text"
           className="form-input"
           value={formData.transactionId || ''}
-          onChange={(e) => setFormData({ ...formData, transactionId: e.target.value })}
+          onChange={(e) => updateField({ transactionId: e.target.value })}
           placeholder="e.g., TXN202606001"
         />
       </div>
@@ -152,12 +187,17 @@ export function WaiterEdit() {
           className="form-input"
           value={toEatDatetimeLocal(formData.timestamp)}
           onChange={(e) =>
-            setFormData({ ...formData, timestamp: e.target.value ? fromEatDatetimeLocal(e.target.value) : '' })
+            updateField({ timestamp: e.target.value ? fromEatDatetimeLocal(e.target.value) : '' })
           }
         />
       </div>
 
       <div className="button-group">
+        {tx.status === 'needs_review' && (
+          <button className="button-secondary button-danger" disabled={deleteMutation.isPending} onClick={onDelete}>
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        )}
         <button className="button-secondary" onClick={() => navigate('/transactions')}>
           Cancel
         </button>

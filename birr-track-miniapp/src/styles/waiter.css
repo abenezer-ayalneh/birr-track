@@ -142,6 +142,16 @@
   opacity: 0.8;
 }
 
+.button-danger {
+  background-color: #ffebee;
+  color: #b71c1c;
+}
+
+.button-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .success-message {
   background-color: #e8f5e9;
   color: #1b5e20;

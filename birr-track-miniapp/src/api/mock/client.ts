@@ -120,6 +120,14 @@ export class MockApiClient implements ApiClient {
     return tx
   }
 
+  async deleteTransaction(id: string): Promise<void> {
+    const tx = this.transactions.find((t) => t.id === id)
+    if (tx && tx.status !== 'needs_review') {
+      throw new Error('Only Needs Review transactions can be deleted')
+    }
+    this.transactions = this.transactions.filter((t) => t.id !== id)
+  }
+
   async getSummary(): Promise<Summary> {
     return fixtureSummary()
   }

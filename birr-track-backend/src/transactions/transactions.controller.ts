@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common'
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res, StreamableFile } from '@nestjs/common'
 import { Response } from 'express'
 
 import { JwtPayload } from '../auth/auth.service'
@@ -63,6 +63,13 @@ export class TransactionsController {
 	async updateTransaction(@Param('id', ParseUUIDPipe) id: string, @Body() updateTransactionDto: UpdateTransactionDto, @AuthUserPayload() auth: JwtPayload) {
 		this.validateBusinessAccess(auth)
 		return this.transactionsService.update(id, updateTransactionDto, auth)
+	}
+
+	@Delete(':id')
+	@HttpCode(204)
+	async deleteTransaction(@Param('id', ParseUUIDPipe) id: string, @AuthUserPayload() auth: JwtPayload): Promise<void> {
+		this.validateBusinessAccess(auth)
+		return this.transactionsService.remove(id, auth, this.storageService)
 	}
 
 	@Post()

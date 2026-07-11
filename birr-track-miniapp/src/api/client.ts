@@ -26,6 +26,7 @@ export interface ApiClient {
   listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>>
   getTransaction(id: string): Promise<TransactionDetail>
   updateTransaction(id: string, patch: TransactionUpdate): Promise<TransactionDetail>
+  deleteTransaction(id: string): Promise<void>
 
   // Reports (Manager/Owner)
   getSummary(params?: { from?: string; to?: string }): Promise<Summary>

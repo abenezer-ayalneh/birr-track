@@ -280,6 +280,13 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
+  async deleteTransaction(id: string): Promise<void> {
+    await this.fetcher.request<void>(`/transactions/${id}`, {
+      method: 'DELETE',
+      responseType: 'void',
+    })
+  }
+
   async getSummary(params?: { from?: string; to?: string }): Promise<Summary> {
     const w = await this.fetcher.request<WireSummary>('/transactions/summary', {
       query: { startDate: params?.from, endDate: params?.to },
