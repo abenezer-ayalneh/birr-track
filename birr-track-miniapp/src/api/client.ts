@@ -11,6 +11,7 @@ import type {
   TransactionDetail,
   TransactionFilters,
   TransactionUpdate,
+  Language,
 } from './types'
 
 /**
@@ -21,6 +22,7 @@ import type {
 export interface ApiClient {
   /** Who am I — role and Business come from the backend, never the client. */
   me(): Promise<Me>
+  updateLanguage(language: Language): Promise<Language>
 
   // Transactions
   listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>>

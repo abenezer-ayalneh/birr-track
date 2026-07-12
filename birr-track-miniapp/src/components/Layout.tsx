@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useRole } from '../lib/useRole'
 import { useRefresh } from '../lib/useRefresh'
 import { Navigation } from './Navigation'
@@ -10,6 +11,7 @@ const MAX_PULL = 96
 export function Layout({ children }: { children: ReactNode }) {
   const { role, isLoading, error } = useRole()
   const { canRefresh, isRefreshing, refresh } = useRefresh()
+  const { t } = useTranslation()
   const mainRef = useRef<HTMLElement | null>(null)
   const startRef = useRef<{ x: number; y: number } | null>(null)
   const [pullDistance, setPullDistance] = useState(0)
@@ -53,8 +55,8 @@ export function Layout({ children }: { children: ReactNode }) {
     return (
       <div className="layout full-height flex-center">
         <div className="text-center px-4">
-          <p className="text-muted">Failed to load user profile</p>
-          <p className="text-muted mt-1">{error?.message || 'Unknown error'}</p>
+          <p className="text-muted">{t('common.failedProfile')}</p>
+          <p className="text-muted mt-1">{error?.message || t('common.unknownError')}</p>
         </div>
       </div>
     )
@@ -78,7 +80,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <span className={isRefreshing ? 'pull-refresh-icon pull-refresh-icon--spinning' : 'pull-refresh-icon'}>
             ↻
           </span>
-          <span>{isRefreshing ? 'Refreshing' : pullDistance >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh'}</span>
+          <span>{isRefreshing ? t('common.refreshing') : pullDistance >= PULL_THRESHOLD ? t('common.releaseToRefresh') : t('common.pullToRefresh')}</span>
         </div>
         {children}
       </main>

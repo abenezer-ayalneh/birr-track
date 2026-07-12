@@ -34,6 +34,7 @@ export function fixtureMe(role: 'waiter' | 'manager' | 'owner' | 'platform_owner
       telegramUserId: 999999999,
       displayName: 'Addis Admin',
       role: 'platform_owner',
+      language: 'en',
       business: null,
     }
   }
@@ -48,6 +49,7 @@ export function fixtureMe(role: 'waiter' | 'manager' | 'owner' | 'platform_owner
           ? 'Yusuf Mohamed'
           : 'Amina Kebede',
     role,
+    language: 'en',
     business: {
       id: 'biz-demo-1',
       name: 'Addis Coffee House',

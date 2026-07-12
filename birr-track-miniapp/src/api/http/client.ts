@@ -3,6 +3,7 @@ import type {
   BusinessListing,
   BusinessStatus,
   Invite,
+  Language,
   Me,
   Page,
   PageParams,
@@ -225,8 +226,18 @@ export class HttpApiClient implements ApiClient {
       telegramUserId: 0,
       displayName: auth.displayName,
       role: auth.role,
+      language: auth.language ?? 'en',
       business,
     }
+  }
+
+  async updateLanguage(language: Language): Promise<Language> {
+    const res = await this.fetcher.request<{ language: Language }>('/auth/language', {
+      method: 'PATCH',
+      body: { language },
+    })
+    this.session.setLanguage(res.language)
+    return res.language
   }
 
   async listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>> {

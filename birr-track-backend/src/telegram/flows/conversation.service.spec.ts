@@ -8,16 +8,8 @@ import { InvitesService } from '../../invites/invites.service'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
 import {
-	BOT_DESCRIPTION,
 	BOT_SHORT_DESCRIPTION,
-	HELP_MESSAGE_MANAGER,
-	HELP_MESSAGE_OWNER,
-	HELP_MESSAGE_PLATFORM_OWNER,
-	HELP_MESSAGE_UNKNOWN,
-	HELP_MESSAGE_WAITER,
-	REGISTER_OR_INVITE_MESSAGE,
 	TELEGRAM_BOT_NAME,
-	WELCOME_MESSAGE_PLATFORM_OWNER,
 } from '../telegram.constants'
 import { ConversationService } from './conversation.service'
 
@@ -121,12 +113,15 @@ describe('ConversationService', () => {
 		it('configures bot profile descriptions and the default command list', async () => {
 			await service.onModuleInit()
 
-			expect(bot.telegram.setMyShortDescription).toHaveBeenCalledWith(BOT_SHORT_DESCRIPTION)
-			expect(bot.telegram.setMyDescription).toHaveBeenCalledWith(BOT_DESCRIPTION)
+			expect(bot.telegram.setMyShortDescription).toHaveBeenCalledWith(BOT_SHORT_DESCRIPTION, undefined)
+			expect(bot.telegram.setMyShortDescription).toHaveBeenCalledWith(expect.stringContaining('ደረሰኞች'), 'am')
+			expect(bot.telegram.setMyDescription).toHaveBeenCalledWith(expect.stringContaining('Birr Track helps'), undefined)
+			expect(bot.telegram.setMyDescription).toHaveBeenCalledWith(expect.stringContaining('ይረዳል'), 'am')
 			expect(bot.telegram.setMyCommands).toHaveBeenCalledWith([
 				{ command: 'start', description: 'Start or refresh your session' },
 				{ command: 'help', description: 'Show what this bot can do' },
 				{ command: 'register', description: 'Register a Business' },
+				{ command: 'lang', description: 'Choose language' },
 			])
 		})
 	})
@@ -137,15 +132,15 @@ describe('ConversationService', () => {
 
 			await service.handleStart(ctx)
 
-			// Platform Owner is env-bootstrapped (no users row) — must not be pushed into invite redemption or registration.
+			// Platform Owner has no users row, so first start asks for language before normal flow.
 			expect(invitesService.redeem).not.toHaveBeenCalled()
 			expect(reply).toHaveBeenCalledTimes(1)
-			expect(reply).toHaveBeenCalledWith(WELCOME_MESSAGE_PLATFORM_OWNER, expect.anything())
+			expect(reply).toHaveBeenCalledWith('Choose your language.', expect.anything())
 		})
 
 		it('refreshes chat commands for a Manager', async () => {
 			const { ctx } = buildStart({
-				user: { id: 'user-1', role: 'manager', businessId: 'business-1' } as never,
+				user: { id: 'user-1', role: 'manager', businessId: 'business-1', language: 'en' } as never,
 				business: { id: 'business-1', name: 'Cafe Addis' } as never,
 				isActiveMember: true,
 			})
@@ -156,9 +151,10 @@ describe('ConversationService', () => {
 				[
 					{ command: 'start', description: 'Refresh your menu' },
 					{ command: 'help', description: 'Show help' },
+					{ command: 'lang', description: 'Choose language' },
 					{ command: 'invite', description: 'Invite a Waiter' },
 				],
-				{ scope: { type: 'chat', chat_id: 777 } },
+				{ scope: { type: 'chat', chat_id: 777 }, language_code: undefined },
 			)
 		})
 
@@ -168,7 +164,7 @@ describe('ConversationService', () => {
 
 			await service.handleStart(ctx)
 
-			expect(reply).toHaveBeenCalledWith(REGISTER_OR_INVITE_MESSAGE, expect.anything())
+			expect(reply).toHaveBeenCalledWith('Choose your language.', expect.anything())
 		})
 	})
 
@@ -178,65 +174,68 @@ describe('ConversationService', () => {
 
 			await service.handleHelpCommand(ctx)
 
-			expect(reply).toHaveBeenCalledWith(HELP_MESSAGE_UNKNOWN)
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('/lang - Choose language.'))
 			expect(bot.telegram.setMyCommands).toHaveBeenCalledWith(
 				[
 					{ command: 'start', description: 'Start or refresh your session' },
 					{ command: 'help', description: 'Show what this bot can do' },
 					{ command: 'register', description: 'Register a Business' },
+					{ command: 'lang', description: 'Choose language' },
 				],
-				{ scope: { type: 'chat', chat_id: 777 } },
+				{ scope: { type: 'chat', chat_id: 777 }, language_code: undefined },
 			)
 		})
 
 		it('explains Receipt submission to Waiters', async () => {
 			const { ctx, reply } = buildHelp({
-				user: { id: 'user-1', role: 'waiter', businessId: 'business-1' } as never,
+				user: { id: 'user-1', role: 'waiter', businessId: 'business-1', language: 'en' } as never,
 				business: { id: 'business-1', name: 'Cafe Addis' } as never,
 				isActiveMember: true,
 			})
 
 			await service.handleHelpCommand(ctx)
 
-			expect(reply).toHaveBeenCalledWith(HELP_MESSAGE_WAITER)
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('/lang - Choose language.'))
 			expect(bot.telegram.setMyCommands).toHaveBeenCalledWith(
 				[
 					{ command: 'start', description: 'Refresh your menu' },
 					{ command: 'help', description: 'Show help' },
+					{ command: 'lang', description: 'Choose language' },
 				],
-				{ scope: { type: 'chat', chat_id: 777 } },
+				{ scope: { type: 'chat', chat_id: 777 }, language_code: undefined },
 			)
 		})
 
 		it('explains invite access to Managers', async () => {
 			const { ctx, reply } = buildHelp({
-				user: { id: 'user-1', role: 'manager', businessId: 'business-1' } as never,
+				user: { id: 'user-1', role: 'manager', businessId: 'business-1', language: 'en' } as never,
 				business: { id: 'business-1', name: 'Cafe Addis' } as never,
 				isActiveMember: true,
 			})
 
 			await service.handleHelpCommand(ctx)
 
-			expect(reply).toHaveBeenCalledWith(HELP_MESSAGE_MANAGER)
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('/invite - Invite a Waiter.'))
 		})
 
 		it('explains Manager invites to Owners', async () => {
 			const { ctx, reply } = buildHelp({
-				user: { id: 'user-1', role: 'owner', businessId: 'business-1' } as never,
+				user: { id: 'user-1', role: 'owner', businessId: 'business-1', language: 'en' } as never,
 				business: { id: 'business-1', name: 'Cafe Addis' } as never,
 				isActiveMember: true,
 			})
 
 			await service.handleHelpCommand(ctx)
 
-			expect(reply).toHaveBeenCalledWith(HELP_MESSAGE_OWNER)
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('/invite - Invite a Waiter or Manager.'))
 			expect(bot.telegram.setMyCommands).toHaveBeenCalledWith(
 				[
 					{ command: 'start', description: 'Refresh your menu' },
 					{ command: 'help', description: 'Show help' },
+					{ command: 'lang', description: 'Choose language' },
 					{ command: 'invite', description: 'Invite a Waiter or Manager' },
 				],
-				{ scope: { type: 'chat', chat_id: 777 } },
+				{ scope: { type: 'chat', chat_id: 777 }, language_code: undefined },
 			)
 		})
 
@@ -245,7 +244,7 @@ describe('ConversationService', () => {
 
 			await service.handleHelpCommand(ctx)
 
-			expect(reply).toHaveBeenCalledWith(HELP_MESSAGE_PLATFORM_OWNER)
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('/lang - Choose language.'))
 		})
 	})
 

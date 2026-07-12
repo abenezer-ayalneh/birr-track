@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'wouter'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { usePageRefresh } from '../lib/useRefresh'
@@ -40,6 +41,7 @@ function rangeFor(period: Period, customFrom: string, customTo: string): { from?
 export function Dashboard() {
   const api = useApi()
   const [, navigate] = useLocation()
+  const { t } = useTranslation()
   const [period, setPeriod] = useState<Period>('month')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
@@ -69,12 +71,12 @@ export function Dashboard() {
 
   return (
     <div className="page">
-      <PageHeader title="Dashboard" subtitle="Revenue & attention overview" />
+      <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
 
       <div className="period-tabs">
         {(['today', 'week', 'month', 'custom'] as const).map((p) => (
           <button key={p} className={`period-tab ${period === p ? 'active' : ''}`} onClick={() => setPeriod(p)}>
-            {p === 'today' ? 'Today' : p === 'week' ? 'This week' : p === 'month' ? 'This month' : 'Custom'}
+            {t(`dashboard.${p}`)}
           </button>
         ))}
       </div>
@@ -82,11 +84,11 @@ export function Dashboard() {
       {period === 'custom' && (
         <div className="custom-range">
           <div className="form-group">
-            <label className="form-label">From</label>
+            <label className="form-label">{t('common.from')}</label>
             <input className="form-input" type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
           </div>
           <div className="form-group">
-            <label className="form-label">To</label>
+            <label className="form-label">{t('common.to')}</label>
             <input className="form-input" type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
           </div>
         </div>
@@ -97,16 +99,16 @@ export function Dashboard() {
       ) : isError ? (
         <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
       ) : !data ? (
-        <EmptyState icon="📅" title="Pick a date range" hint="Choose From / To to see the summary." />
+        <EmptyState icon="📅" title={t('dashboard.pickRange')} hint={t('dashboard.chooseRange')} />
       ) : (
         <>
           <div className="summary-totals">
             <div className="stat-card">
-              <div className="stat-label">Total revenue</div>
+              <div className="stat-label">{t('dashboard.totalRevenue')}</div>
               <div className="stat-value">{formatEtbCompact(data.totals.amount)}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Transactions</div>
+              <div className="stat-label">{t('dashboard.transactions')}</div>
               <div className="stat-value">{data.totals.count}</div>
             </div>
           </div>
@@ -114,21 +116,21 @@ export function Dashboard() {
           <div className="attention-grid">
             <button className="attention-card attention-card--review" onClick={() => goToTable({ status: 'needs_review' })}>
               <div className="attention-count">{data.attention.needsReview}</div>
-              <div className="attention-label">Needs review</div>
+              <div className="attention-label">{t('common.needsReview')}</div>
             </button>
             <button className="attention-card attention-card--dup" onClick={() => goToTable({ duplicate: '1' })}>
               <div className="attention-count">{data.attention.duplicates}</div>
-              <div className="attention-label">Duplicates</div>
+              <div className="attention-label">{t('dashboard.duplicates')}</div>
             </button>
             <button className="attention-card attention-card--edit" onClick={() => goToTable({ edited: '1' })}>
               <div className="attention-count">{data.attention.edited}</div>
-              <div className="attention-label">Edited</div>
+              <div className="attention-label">{t('common.edited')}</div>
             </button>
           </div>
 
-          <div className="section-title">By waiter</div>
+          <div className="section-title">{t('dashboard.byWaiter')}</div>
           {data.perWaiter.length === 0 ? (
-            <p className="text-muted">No data for this period.</p>
+            <p className="text-muted">{t('dashboard.noData')}</p>
           ) : (
             data.perWaiter.map((row) => (
               <button
@@ -146,9 +148,9 @@ export function Dashboard() {
             ))
           )}
 
-          <div className="section-title">By bank</div>
+          <div className="section-title">{t('dashboard.byBank')}</div>
           {data.perBank.length === 0 ? (
-            <p className="text-muted">No data for this period.</p>
+            <p className="text-muted">{t('dashboard.noData')}</p>
           ) : (
             data.perBank.map((row) => (
               <button

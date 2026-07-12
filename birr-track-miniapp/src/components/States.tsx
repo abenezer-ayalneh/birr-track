@@ -1,4 +1,5 @@
 /** Shared loading / error / empty placeholders for consistent view states. */
+import { useTranslation } from 'react-i18next'
 
 export function LoadingState() {
   return (
@@ -9,9 +10,10 @@ export function LoadingState() {
 }
 
 export function ErrorState({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  const { t } = useTranslation()
   return (
     <div className="state-block text-center">
-      <p className="text-muted">Something went wrong</p>
+      <p className="text-muted">{t('common.errorTitle')}</p>
       {message && (
         <p className="text-muted mt-1" style={{ wordBreak: 'break-word' }}>
           {message}
@@ -19,7 +21,7 @@ export function ErrorState({ message, onRetry }: { message?: string; onRetry?: (
       )}
       {onRetry && (
         <button className="button-secondary mt-2" style={{ maxWidth: 160 }} onClick={onRetry}>
-          Retry
+          {t('common.tryAgain')}
         </button>
       )}
     </div>

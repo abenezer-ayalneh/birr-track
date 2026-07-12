@@ -26,6 +26,7 @@ describe('ProcessingService', () => {
 		displayName: 'John Waiter',
 		businessId: 'biz-1',
 		role: 'waiter',
+		language: 'en',
 		removedAt: null,
 		createdAt: new Date(),
 		business: null,

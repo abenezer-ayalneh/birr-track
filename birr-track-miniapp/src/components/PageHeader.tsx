@@ -1,4 +1,6 @@
 import { useRefresh } from '../lib/useRefresh'
+import { useTranslation } from 'react-i18next'
+import { LanguageSelector } from './LanguageSelector'
 
 interface PageHeaderProps {
   title: string
@@ -7,12 +9,13 @@ interface PageHeaderProps {
 
 export function RefreshButton() {
   const { canRefresh, isRefreshing, refresh } = useRefresh()
+  const { t } = useTranslation()
 
   return (
     <button
       className={`refresh-button ${isRefreshing ? 'refresh-button--spinning' : ''}`}
-      aria-label="Refresh"
-      title="Refresh"
+      aria-label={t('common.refresh')}
+      title={t('common.refresh')}
       disabled={!canRefresh || isRefreshing}
       onClick={() => void refresh()}
     >
@@ -28,7 +31,10 @@ export function PageHeader({ title, subtitle }: PageHeaderProps) {
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="page-subtitle">{subtitle}</p>}
       </div>
-      <RefreshButton />
+      <div className="page-header-actions">
+        <LanguageSelector />
+        <RefreshButton />
+      </div>
     </div>
   )
 }

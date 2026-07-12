@@ -1,6 +1,7 @@
 import type { ApiClient } from '../client'
 import type {
   Invite,
+  Language,
   Page,
   PageParams,
   Registration,
@@ -23,6 +24,7 @@ import {
 } from './fixtures'
 
 let currentRole: 'waiter' | 'manager' | 'owner' | 'platform_owner' = 'waiter'
+let currentLanguage: Language = (localStorage.getItem('birr-track-language') as Language | null) || 'en'
 
 export function setMockRole(role: 'waiter' | 'manager' | 'owner' | 'platform_owner'): void {
   currentRole = role
@@ -47,7 +49,13 @@ export class MockApiClient implements ApiClient {
   }
 
   async me() {
-    return fixtureMe(currentRole)
+    return { ...fixtureMe(currentRole), language: currentLanguage }
+  }
+
+  async updateLanguage(language: Language): Promise<Language> {
+    currentLanguage = language
+    localStorage.setItem('birr-track-language', language)
+    return language
   }
 
   async listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>> {

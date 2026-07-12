@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useRoute } from 'wouter'
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TransactionUpdate } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
@@ -20,6 +21,7 @@ export function WaiterEdit() {
   const [, navigate] = useLocation()
   const [, params] = useRoute('/transactions/:id')
   const queryClient = useQueryClient()
+  const { t } = useTranslation()
 
   const id = params?.id as string
   const [saved, setSaved] = useState(false)
@@ -81,7 +83,7 @@ export function WaiterEdit() {
   })
 
   function onDelete() {
-    if (!window.confirm('Delete this Needs Review transaction? This cannot be undone.')) {
+    if (!window.confirm(t('transactions.deleteConfirm'))) {
       return
     }
     deleteMutation.mutate()
@@ -89,7 +91,7 @@ export function WaiterEdit() {
 
   if (loadingTx) return <LoadingState />
   if (isError || !tx) {
-    return <ErrorState message={error instanceof Error ? error.message : 'Transaction not found'} />
+    return <ErrorState message={error instanceof Error ? error.message : t('transactions.notFound')} />
   }
 
   const allFieldsPresent =
@@ -101,10 +103,10 @@ export function WaiterEdit() {
         style={{ marginBottom: '16px', color: 'var(--tg-color-link)', fontSize: '14px' }}
         onClick={() => navigate('/transactions')}
       >
-        ← Back
+        ← {t('transactions.back')}
       </button>
 
-      <PageHeader title="Transaction" subtitle={tx.status === 'needs_review' ? 'Needs review' : 'Recorded'} />
+      <PageHeader title={t('transactions.detailTitle')} subtitle={tx.status === 'needs_review' ? t('common.needsReview') : t('common.recorded')} />
 
       {imageLoading ? (
         <div className="receipt-image flex-center" style={{ minHeight: 200 }}>
@@ -112,38 +114,38 @@ export function WaiterEdit() {
         </div>
       ) : imageError ? (
         <div className="receipt-image flex-center text-muted" style={{ minHeight: 120 }}>
-          Image unavailable
+          {t('transactions.imageUnavailable')}
         </div>
       ) : imageUrl ? (
-        <img src={imageUrl} alt="Receipt" className="receipt-image" />
+        <img src={imageUrl} alt={t('transactions.receiptAlt')} className="receipt-image" />
       ) : null}
 
       {tx.editedByUploader && (
-        <div className="edited-flag">🏷️ This receipt was edited by the uploader. Verify against the image.</div>
+        <div className="edited-flag">🏷️ {t('transactions.editedWarning')}</div>
       )}
 
       {tx.isDuplicate && (
         <div className="edited-flag" style={{ backgroundColor: '#ffebee', color: '#b71c1c' }}>
-          ⚠️ This looks like a duplicate. If it's different, please provide details.
+          ⚠️ {t('transactions.duplicateWarning')}
         </div>
       )}
 
       {updateMutation.isError && (
         <div className="inline-error">
-          {updateMutation.error instanceof Error ? updateMutation.error.message : 'Failed to save'}
+          {updateMutation.error instanceof Error ? updateMutation.error.message : t('transactions.saveFailed')}
         </div>
       )}
 
       {deleteMutation.isError && (
         <div className="inline-error">
-          {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'Failed to delete'}
+          {deleteMutation.error instanceof Error ? deleteMutation.error.message : t('transactions.deleteFailed')}
         </div>
       )}
 
-      {saved && <div className="success-message">✓ Saved! Redirecting…</div>}
+      {saved && <div className="success-message">✓ {t('transactions.savedRedirect')}</div>}
 
       <div className="form-group">
-        <label className="form-label">Bank</label>
+        <label className="form-label">{t('transactions.bank')}</label>
         <input
           type="text"
           className="form-input"
@@ -154,7 +156,7 @@ export function WaiterEdit() {
       </div>
 
       <div className="form-group">
-        <label className="form-label">Amount (ETB)</label>
+        <label className="form-label">{t('transactions.amount')}</label>
         <input
           type="number"
           className="form-input"
@@ -166,11 +168,11 @@ export function WaiterEdit() {
           step="0.01"
           min="0"
         />
-        <div className="form-hint">Extraction confidence: {Math.round(tx.confidence * 100)}%</div>
+        <div className="form-hint">{t('transactions.confidence', { percent: Math.round(tx.confidence * 100) })}</div>
       </div>
 
       <div className="form-group">
-        <label className="form-label">Transaction ID</label>
+        <label className="form-label">{t('transactions.transactionId')}</label>
         <input
           type="text"
           className="form-input"
@@ -181,7 +183,7 @@ export function WaiterEdit() {
       </div>
 
       <div className="form-group">
-        <label className="form-label">Date & Time (EAT)</label>
+        <label className="form-label">{t('transactions.dateTime')}</label>
         <input
           type="datetime-local"
           className="form-input"
@@ -195,18 +197,18 @@ export function WaiterEdit() {
       <div className="button-group">
         {tx.status === 'needs_review' && (
           <button className="button-secondary button-danger" disabled={deleteMutation.isPending} onClick={onDelete}>
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            {deleteMutation.isPending ? t('common.deleting') : t('common.delete')}
           </button>
         )}
         <button className="button-secondary" onClick={() => navigate('/transactions')}>
-          Cancel
+          {t('transactions.cancel')}
         </button>
         <button
           className="button-primary"
           disabled={!allFieldsPresent || updateMutation.isPending}
           onClick={() => updateMutation.mutate(formData)}
         >
-          {updateMutation.isPending ? 'Saving…' : 'Save'}
+          {updateMutation.isPending ? t('common.saving') : t('common.save')}
         </button>
       </div>
     </div>

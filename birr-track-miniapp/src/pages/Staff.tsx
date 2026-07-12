@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import type { Invite, StaffMember } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
@@ -24,6 +25,7 @@ export function Staff() {
   const api = useApi()
   const queryClient = useQueryClient()
   const { role: myRole } = useRole()
+  const { t } = useTranslation()
 
   const staffQuery = useQuery({ queryKey: ['staff'], queryFn: () => api.listStaff() })
   const invitesQuery = useQuery({ queryKey: ['invites'], queryFn: () => api.listInvites() })
@@ -57,21 +59,21 @@ export function Staff() {
 
   return (
     <div className="page">
-      <PageHeader title="Staff" subtitle="Team members & pending invites" />
+      <PageHeader title={t('staff.title')} subtitle={t('staff.subtitle')} />
 
       {inviteHref() ? (
         <a className="invite-button" href={inviteHref()} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', color: '#fff' }}>
-          ＋ Invite someone
+          ＋ {t('staff.inviteSomeone')}
         </a>
       ) : (
-        <div className="text-muted mb-2">Invite via the bot's /invite command (bot username not configured).</div>
+        <div className="text-muted mb-2">{t('staff.inviteViaBot')}</div>
       )}
 
       {lastError && (
-        <div className="inline-error">{lastError instanceof Error ? lastError.message : 'Action failed'}</div>
+        <div className="inline-error">{lastError instanceof Error ? lastError.message : t('common.actionFailed')}</div>
       )}
 
-      <div className="section-title">Members</div>
+      <div className="section-title">{t('staff.members')}</div>
       {staffQuery.isLoading ? (
         <LoadingState />
       ) : staffQuery.isError ? (
@@ -80,7 +82,7 @@ export function Staff() {
           onRetry={() => staffQuery.refetch()}
         />
       ) : (staffQuery.data?.length ?? 0) === 0 ? (
-        <EmptyState icon="👥" title="No members yet" />
+        <EmptyState icon="👥" title={t('staff.noMembers')} />
       ) : (
         staffQuery.data!.map((member) => (
           <div key={member.userId} className="list-row">
@@ -94,17 +96,17 @@ export function Staff() {
             <div className="list-actions">
               {isOwner && member.role === 'waiter' && (
                 <button className="action-button action-button--primary" disabled={mutating} onClick={() => promote.mutate(member.userId)}>
-                  Promote
+                  {t('staff.promote')}
                 </button>
               )}
               {isOwner && member.role === 'manager' && (
                 <button className="action-button" disabled={mutating} onClick={() => demote.mutate(member.userId)}>
-                  Demote
+                  {t('staff.demote')}
                 </button>
               )}
               {canRemove(member) && (
                 <button className="action-button action-button--danger" disabled={mutating} onClick={() => remove.mutate(member.userId)}>
-                  Remove
+                  {t('staff.remove')}
                 </button>
               )}
             </div>
@@ -112,7 +114,7 @@ export function Staff() {
         ))
       )}
 
-      <div className="section-title">Pending invites</div>
+      <div className="section-title">{t('staff.pendingInvites')}</div>
       {invitesQuery.isLoading ? (
         <LoadingState />
       ) : invitesQuery.isError ? (
@@ -121,7 +123,7 @@ export function Staff() {
           onRetry={() => invitesQuery.refetch()}
         />
       ) : (invitesQuery.data?.filter((i) => i.status === 'pending').length ?? 0) === 0 ? (
-        <EmptyState icon="✉️" title="No pending invites" />
+        <EmptyState icon="✉️" title={t('staff.noInvites')} />
       ) : (
         invitesQuery
           .data!.filter((i: Invite) => i.status === 'pending')
@@ -131,7 +133,7 @@ export function Staff() {
                 <div className="list-name">{invite.inviteeName}</div>
                 <div className="list-sub">
                   <span className={roleBadgeClass(invite.role)}>{invite.role}</span>
-                  <span> · expires {formatDate(invite.expiresAt)}</span>
+                  <span> · {t('staff.expires', { date: formatDate(invite.expiresAt) })}</span>
                 </div>
               </div>
               <div className="list-actions">
@@ -140,7 +142,7 @@ export function Staff() {
                   disabled={revoke.isPending}
                   onClick={() => revoke.mutate(invite.id)}
                 >
-                  Revoke
+                  {t('staff.revoke')}
                 </button>
               </div>
             </div>

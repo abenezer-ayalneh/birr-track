@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { IsNull, Repository } from 'typeorm'
 
-import { User, UserRole } from './entities/user.entity'
+import { SupportedLanguage, User, UserRole } from './entities/user.entity'
 
 const ROLE_RANK: Record<UserRole, number> = { waiter: 1, manager: 2, owner: 3 }
 
@@ -12,6 +12,7 @@ export type JoinBusinessParams = {
 	displayName: string
 	businessId: string
 	role: UserRole
+	language?: SupportedLanguage
 }
 
 @Injectable()
@@ -76,6 +77,7 @@ export class UsersService {
 			existing.displayName = params.displayName
 			existing.businessId = params.businessId
 			existing.role = params.role
+			existing.language = params.language ?? existing.language ?? 'en'
 			existing.removedAt = null
 			return this.userRepository.save(existing)
 		}
@@ -85,7 +87,17 @@ export class UsersService {
 			displayName: params.displayName,
 			businessId: params.businessId,
 			role: params.role,
+			language: params.language ?? 'en',
 		})
+		return this.userRepository.save(user)
+	}
+
+	async updateLanguage(userId: string, language: SupportedLanguage): Promise<User> {
+		const user = await this.findById(userId)
+		if (!user) {
+			throw new NotFoundException(`User ${userId} not found`)
+		}
+		user.language = language
 		return this.userRepository.save(user)
 	}
 

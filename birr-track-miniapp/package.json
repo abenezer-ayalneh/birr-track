@@ -12,8 +12,10 @@
   "dependencies": {
     "@tanstack/react-query": "^5.80.0",
     "@telegram-apps/sdk": "^3.10.0",
+    "i18next": "^25.3.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-i18next": "^15.6.1",
     "wouter": "^3.7.0"
   },
   "devDependencies": {

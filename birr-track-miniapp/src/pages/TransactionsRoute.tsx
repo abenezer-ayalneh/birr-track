@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useRole } from '../lib/useRole'
 import { LoadingState } from '../components/States'
 import { WaiterTransactions } from './WaiterTransactions'
@@ -13,6 +14,7 @@ import { TransactionsTable } from './TransactionsTable'
 export function TransactionsRoute() {
   const { role, isLoading } = useRole()
   const [view, setView] = useState<'business' | 'mine'>('business')
+  const { t } = useTranslation()
 
   if (isLoading || !role) return <LoadingState />
 
@@ -27,13 +29,13 @@ export function TransactionsRoute() {
             className={`period-tab ${view === 'business' ? 'active' : ''}`}
             onClick={() => setView('business')}
           >
-            Business
+            {t('transactions.business')}
           </button>
           <button
             className={`period-tab ${view === 'mine' ? 'active' : ''}`}
             onClick={() => setView('mine')}
           >
-            My Receipts
+            {t('transactions.mineTitle')}
           </button>
         </div>
       </div>

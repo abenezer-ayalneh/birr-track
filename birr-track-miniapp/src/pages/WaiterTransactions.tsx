@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'wouter'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Transaction, TransactionStatus } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
@@ -19,6 +20,7 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
   const api = useApi()
   const { me } = useRole()
   const [, navigate] = useLocation()
+  const { t } = useTranslation()
   const [status, setStatus] = useState<TransactionStatus>('needs_review')
 
   const { data: page, isLoading, isError, error, refetch } = useQuery({
@@ -37,13 +39,13 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
   return (
     <div className="page">
       <PageHeader
-        title="My Receipts"
+        title={t('transactions.mineTitle')}
         subtitle={
           transactions.length === 0
-            ? 'All caught up!'
+            ? t('common.allCaughtUp')
             : transactions.length === 1
-              ? '1 receipt'
-              : `${transactions.length} receipts`
+              ? t('transactions.count_one')
+              : t('transactions.count_other', { count: transactions.length })
         }
       />
 
@@ -54,7 +56,7 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
             className={`filter-tab ${status === s ? 'active' : ''}`}
             onClick={() => setStatus(s)}
           >
-            {s === 'needs_review' ? '⚠️ Needs Review' : '✓ Recorded'}
+            {s === 'needs_review' ? `⚠️ ${t('common.needsReview')}` : `✓ ${t('common.recorded')}`}
           </button>
         ))}
       </div>
@@ -66,8 +68,8 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
       ) : transactions.length === 0 ? (
         <EmptyState
           icon="✅"
-          title={status === 'needs_review' ? 'Nothing needs review' : 'No recorded receipts'}
-          hint={status === 'needs_review' ? "You're all caught up." : undefined}
+          title={status === 'needs_review' ? t('transactions.emptyReview') : t('transactions.emptyRecorded')}
+          hint={status === 'needs_review' ? t('common.allCaughtUp') : undefined}
         />
       ) : (
         <div className="transaction-list">
@@ -86,8 +88,8 @@ export function WaiterTransactions({ ownView = false }: { ownView?: boolean }) {
                   <div className="tx-amount">{formatEtb(tx.amount)}</div>
                   <div className="flex" style={{ gap: '4px', marginTop: '2px' }}>
                     {tx.status === 'needs_review' && <span className="chip chip--warning">⚠️</span>}
-                    {tx.isDuplicate && <span className="chip chip--alert">Duplicate</span>}
-                    {tx.editedByUploader && <span className="chip chip--alert">Edited</span>}
+                    {tx.isDuplicate && <span className="chip chip--alert">{t('common.duplicate')}</span>}
+                    {tx.editedByUploader && <span className="chip chip--alert">{t('common.edited')}</span>}
                   </div>
                 </div>
               </div>

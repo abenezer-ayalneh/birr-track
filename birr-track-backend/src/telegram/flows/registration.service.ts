@@ -3,8 +3,10 @@ import { Action, Ctx, Update } from 'nestjs-telegraf'
 
 import { RegistrationsService } from '../../registrations/registrations.service'
 import { describeError } from '../../shared/utils/describe-error.util'
+import { SupportedLanguage } from '../../users/entities/user.entity'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
+import { botText, formatBotText, isSupportedLanguage } from '../telegram.i18n'
 
 @Injectable()
 @Update()
@@ -35,35 +37,36 @@ export class RegistrationService {
 		const businessId = data.replace('approve_biz_', '')
 
 		if (!ctx.state.isPlatformOwner) {
-			await ctx.answerCbQuery('Only the Platform Owner can approve registrations.')
+			await ctx.answerCbQuery(botText(this.getLanguage(ctx)).approveOnlyPlatformOwner)
 			return
 		}
+		const t = botText(this.getLanguage(ctx))
 
 		try {
 			const { changed, business } = await this.registrationsService.approveBusiness(businessId)
 			if (!changed) {
-				await ctx.answerCbQuery('Already approved.')
+				await ctx.answerCbQuery(t.alreadyApproved)
 				return
 			}
 
-			const ownerMsg = `🎉 Your business "${business.name}" has been approved! You can now start accepting receipts from your team.`
+			const ownerMsg = formatBotText(t.ownerApproved, { businessName: business.name })
 			await this.notifyRegistrant(ctx, business.ownerUserId, ownerMsg)
 
-			await ctx.editMessageText(`✅ Approved: ${business.name}`, { reply_markup: undefined })
-			await ctx.answerCbQuery('Business approved!')
+			await ctx.editMessageText(`✅ ${formatBotText(t.approvedLine, { businessName: business.name })}`, { reply_markup: undefined })
+			await ctx.answerCbQuery(t.businessApprovedCb)
 
 			this.logger.log(`Business ${businessId} approved by Platform Owner`)
 		} catch (err) {
 			if (err instanceof NotFoundException) {
-				await ctx.answerCbQuery('Business not found.')
+				await ctx.answerCbQuery(t.businessNotFound)
 				return
 			}
 			if (err instanceof ConflictException) {
-				await ctx.answerCbQuery('Cannot approve this business.')
+				await ctx.answerCbQuery(t.cannotApprove)
 				return
 			}
 			this.logger.error(`Error approving business ${businessId}: ${describeError(err)}`)
-			await ctx.answerCbQuery('Failed to approve.')
+			await ctx.answerCbQuery(t.failedApprove)
 		}
 	}
 
@@ -71,35 +74,36 @@ export class RegistrationService {
 		const businessId = data.replace('reject_biz_', '')
 
 		if (!ctx.state.isPlatformOwner) {
-			await ctx.answerCbQuery('Only the Platform Owner can reject registrations.')
+			await ctx.answerCbQuery(botText(this.getLanguage(ctx)).rejectOnlyPlatformOwner)
 			return
 		}
+		const t = botText(this.getLanguage(ctx))
 
 		try {
 			const { changed, business } = await this.registrationsService.rejectBusiness(businessId)
 			if (!changed) {
-				await ctx.answerCbQuery('Already rejected.')
+				await ctx.answerCbQuery(t.alreadyRejected)
 				return
 			}
 
-			const rejectionMsg = `Your business registration for "${business.name}" was not approved at this time. Please contact support for details.`
+			const rejectionMsg = formatBotText(t.ownerRejected, { businessName: business.name })
 			await this.notifyRegistrant(ctx, business.ownerUserId, rejectionMsg)
 
-			await ctx.editMessageText(`❌ Rejected: ${business.name}`, { reply_markup: undefined })
-			await ctx.answerCbQuery('Business rejected.')
+			await ctx.editMessageText(`❌ ${formatBotText(t.rejectedLine, { businessName: business.name })}`, { reply_markup: undefined })
+			await ctx.answerCbQuery(t.businessRejectedCb)
 
 			this.logger.log(`Business ${businessId} rejected by Platform Owner`)
 		} catch (err) {
 			if (err instanceof NotFoundException) {
-				await ctx.answerCbQuery('Business not found.')
+				await ctx.answerCbQuery(t.businessNotFound)
 				return
 			}
 			if (err instanceof ConflictException) {
-				await ctx.answerCbQuery('Cannot reject this business.')
+				await ctx.answerCbQuery(t.cannotReject)
 				return
 			}
 			this.logger.error(`Error rejecting business ${businessId}: ${describeError(err)}`)
-			await ctx.answerCbQuery('Failed to reject.')
+			await ctx.answerCbQuery(t.failedReject)
 		}
 	}
 
@@ -118,5 +122,13 @@ export class RegistrationService {
 		} catch (err) {
 			this.logger.error(`Failed to notify registrant ${owner.id}: ${describeError(err)}`)
 		}
+	}
+
+	private getLanguage(ctx: IdentifiedContext): SupportedLanguage {
+		const sessionLanguage = ctx.session?.language
+		if (isSupportedLanguage(sessionLanguage)) {
+			return sessionLanguage
+		}
+		return ctx.state.user?.language || 'en'
 	}
 }

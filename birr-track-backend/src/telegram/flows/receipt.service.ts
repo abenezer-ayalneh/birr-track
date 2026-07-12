@@ -6,8 +6,10 @@ import { Message } from 'telegraf/types'
 import { QueueService } from '../../queue/queue.service'
 import { RateLimitService } from '../../shared/rate-limit/rate-limit.service'
 import { describeError } from '../../shared/utils/describe-error.util'
+import { SupportedLanguage } from '../../users/entities/user.entity'
 import { IdentifiedContext } from '../services/identity.service'
-import { PHOTO_RATE_LIMIT_KEY_PREFIX, THROTTLED_MESSAGE } from '../telegram.constants'
+import { PHOTO_RATE_LIMIT_KEY_PREFIX } from '../telegram.constants'
+import { botText, formatBotText, isSupportedLanguage } from '../telegram.i18n'
 
 const DEFAULT_PHOTO_RATE_LIMIT = 30
 const DEFAULT_PHOTO_RATE_WINDOW_SECONDS = 60
@@ -47,22 +49,22 @@ export class ReceiptService {
 		}
 
 		const telegramUserId = String(ctx.from.id)
+		const t = botText(this.getLanguage(ctx))
 
 		if (!ctx.state.user) {
-			const REGISTER_OR_INVITE = "You're not registered. Send /register to create a business, or ask your manager for an invite."
-			await ctx.reply(REGISTER_OR_INVITE)
+			await ctx.reply(t.unknownPhotoUser)
 			this.logger.log(`Rejected photo from unknown user ${telegramUserId}`)
 			return
 		}
 
 		if (ctx.state.business?.status === 'suspended') {
-			await ctx.reply('Your business is temporarily suspended. Please contact support.')
+			await ctx.reply(t.suspendedBusiness)
 			this.logger.warn(`Rejected photo from suspended business user ${telegramUserId}`)
 			return
 		}
 
 		if (ctx.state.business?.status !== 'active') {
-			await ctx.reply("Your business registration is pending approval. We'll notify you when you're ready to go.")
+			await ctx.reply(t.pendingBusiness)
 			this.logger.log(`Rejected photo from pending business user ${telegramUserId}`)
 			return
 		}
@@ -74,7 +76,7 @@ export class ReceiptService {
 		if (!result.allowed) {
 			this.logger.warn(`Throttled photo from user ${telegramUserId} (${result.count} in current window, limit ${limit})`)
 			if (result.count === limit + 1) {
-				await ctx.reply(THROTTLED_MESSAGE)
+				await ctx.reply(t.throttled)
 			}
 			return
 		}
@@ -98,8 +100,9 @@ export class ReceiptService {
 	}
 
 	private async sendMediaGroupAck(ctx: IdentifiedContext, mediaGroupId?: string): Promise<void> {
+		const t = botText(this.getLanguage(ctx))
 		if (!mediaGroupId) {
-			await ctx.reply('Received ✓')
+			await ctx.reply(t.receivedOne)
 			return
 		}
 
@@ -114,7 +117,7 @@ export class ReceiptService {
 				chatId: ctx.chat?.id || 0,
 				timeout: setTimeout(() => {
 					const count = newAck.count
-					ctx.reply(`Received ${count} receipt${count > 1 ? 's' : ''} ✓`).catch((err) => {
+					ctx.reply(formatBotText(t.receivedMany, { count })).catch((err) => {
 						this.logger.error(`Failed to send media group ack: ${describeError(err)}`)
 					})
 					this.mediaGroupAcks.delete(key)
@@ -141,9 +144,9 @@ export class ReceiptService {
 		try {
 			const typedBot = telegramBot as { telegram?: { sendMessage?: (id: string, msg: string, opts: unknown) => Promise<void> } }
 			if (typedBot?.telegram?.sendMessage) {
-				await typedBot.telegram.sendMessage(telegramUserId, '⚠️ 1 receipt needs your attention — open the app to fix it.', {
+				await typedBot.telegram.sendMessage(telegramUserId, botText('en').reviewPing, {
 					reply_markup: {
-						inline_keyboard: [[{ text: '📱 Open Mini App', web_app: { url: miniAppUrl } }]],
+						inline_keyboard: [[{ text: `📱 ${botText('en').openMiniApp}`, web_app: { url: miniAppUrl } }]],
 					},
 				})
 				this.logger.log(`Pinged waiter ${telegramUserId} for review`)
@@ -151,5 +154,13 @@ export class ReceiptService {
 		} catch (err) {
 			this.logger.error(`Failed to ping waiter ${telegramUserId}: ${describeError(err)}`)
 		}
+	}
+
+	private getLanguage(ctx: IdentifiedContext): SupportedLanguage {
+		const sessionLanguage = ctx.session?.language
+		if (isSupportedLanguage(sessionLanguage)) {
+			return sessionLanguage
+		}
+		return ctx.state.user?.language || 'en'
 	}
 }

@@ -6,7 +6,6 @@ import { QueueService } from '../../queue/queue.service'
 import { RateLimitService } from '../../shared/rate-limit/rate-limit.service'
 import { User } from '../../users/entities/user.entity'
 import { IdentifiedContext } from '../services/identity.service'
-import { THROTTLED_MESSAGE } from '../telegram.constants'
 import { ReceiptService } from './receipt.service'
 
 describe('ReceiptService', () => {
@@ -36,6 +35,7 @@ describe('ReceiptService', () => {
 			displayName: 'Abebe',
 			businessId: 'business-1',
 			role: 'waiter',
+			language: 'en',
 		} as User
 		const business = {
 			id: 'business-1',
@@ -85,7 +85,7 @@ describe('ReceiptService', () => {
 		await service.handlePhoto(ctx)
 
 		expect(queueService.enqueueImageProcessingJob).not.toHaveBeenCalled()
-		expect(ctx.reply).toHaveBeenCalledWith("You're not registered. Send /register to create a business, or ask your manager for an invite.")
+		expect(ctx.reply).toHaveBeenCalledWith("You're not registered. Send /register to create a Business, or ask your Manager for an Invite.")
 	})
 
 	it('rejects pending businesses and does not enqueue', async () => {
@@ -102,7 +102,7 @@ describe('ReceiptService', () => {
 		await service.handlePhoto(ctx)
 
 		expect(queueService.enqueueImageProcessingJob).not.toHaveBeenCalled()
-		expect(ctx.reply).toHaveBeenCalledWith("Your business registration is pending approval. We'll notify you when you're ready to go.")
+		expect(ctx.reply).toHaveBeenCalledWith("Your Business registration is pending approval. We'll notify you when you're ready to go.")
 	})
 
 	it('rejects suspended businesses and does not enqueue', async () => {
@@ -119,7 +119,7 @@ describe('ReceiptService', () => {
 		await service.handlePhoto(ctx)
 
 		expect(queueService.enqueueImageProcessingJob).not.toHaveBeenCalled()
-		expect(ctx.reply).toHaveBeenCalledWith('Your business is temporarily suspended. Please contact support.')
+		expect(ctx.reply).toHaveBeenCalledWith('Your Business is temporarily suspended. Please contact support.')
 	})
 
 	it('does not enqueue rate-limited photos', async () => {
@@ -130,7 +130,7 @@ describe('ReceiptService', () => {
 		await service.handlePhoto(ctx)
 
 		expect(queueService.enqueueImageProcessingJob).not.toHaveBeenCalled()
-		expect(ctx.reply).toHaveBeenCalledWith(THROTTLED_MESSAGE)
+		expect(ctx.reply).toHaveBeenCalledWith("You're sending Receipts too quickly. Please wait a minute and try again.")
 	})
 
 	it('enqueues each media group photo and sends one grouped acknowledgement', async () => {
@@ -145,7 +145,7 @@ describe('ReceiptService', () => {
 		await Promise.resolve()
 
 		expect(queueService.enqueueImageProcessingJob).toHaveBeenCalledTimes(2)
-		expect(first.reply).toHaveBeenCalledWith('Received 2 receipts ✓')
+		expect(first.reply).toHaveBeenCalledWith('Received 2 Receipts ✓')
 		expect(second.reply).not.toHaveBeenCalled()
 		jest.useRealTimers()
 	})

@@ -4,6 +4,7 @@
  */
 
 export type Role = 'waiter' | 'manager' | 'owner' | 'platform_owner'
+export type Language = 'en' | 'am'
 
 export const ROLES: readonly Role[] = ['waiter', 'manager', 'owner', 'platform_owner']
 
@@ -26,6 +27,7 @@ export interface Me {
   telegramUserId: number
   displayName: string
   role: Role
+  language: Language
   /** null for the Platform Owner, who belongs to no Business. */
   business: Business | null
 }

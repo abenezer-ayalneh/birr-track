@@ -35,6 +35,7 @@ describe('InvitesService', () => {
 		displayName: 'John Waiter',
 		businessId: 'business-1',
 		role: 'waiter' as const,
+		language: 'en',
 		removedAt: null,
 		createdAt: new Date(),
 		business: null,

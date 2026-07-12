@@ -1,4 +1,5 @@
 import { useLocation } from 'wouter'
+import { useTranslation } from 'react-i18next'
 import type { Role } from '../api/types'
 
 const ICONS: Record<string, string> = {
@@ -10,20 +11,21 @@ const ICONS: Record<string, string> = {
 
 interface NavItem {
   path: string
-  label: string
+  labelKey: string
   icon: string
   roles: Role[]
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { path: '/transactions', label: 'Transactions', icon: ICONS.transactions, roles: ['waiter', 'manager', 'owner'] },
-  { path: '/dashboard', label: 'Dashboard', icon: ICONS.dashboard, roles: ['manager', 'owner'] },
-  { path: '/staff', label: 'Staff', icon: ICONS.staff, roles: ['manager', 'owner'] },
-  { path: '/registrations', label: 'Platform', icon: ICONS.registrations, roles: ['platform_owner'] },
+  { path: '/transactions', labelKey: 'nav.transactions', icon: ICONS.transactions, roles: ['waiter', 'manager', 'owner'] },
+  { path: '/dashboard', labelKey: 'nav.dashboard', icon: ICONS.dashboard, roles: ['manager', 'owner'] },
+  { path: '/staff', labelKey: 'nav.staff', icon: ICONS.staff, roles: ['manager', 'owner'] },
+  { path: '/registrations', labelKey: 'nav.platform', icon: ICONS.registrations, roles: ['platform_owner'] },
 ]
 
 export function Navigation({ role }: { role: Role }) {
   const [location, navigate] = useLocation()
+  const { t } = useTranslation()
 
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role))
 
@@ -36,7 +38,7 @@ export function Navigation({ role }: { role: Role }) {
           onClick={() => navigate(item.path)}
         >
           <span className="nav-icon">{item.icon}</span>
-          <span>{item.label}</span>
+          <span>{t(item.labelKey)}</span>
         </button>
       ))}
     </nav>

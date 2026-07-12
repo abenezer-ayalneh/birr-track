@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation, useSearch } from 'wouter'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Transaction, TransactionStatus } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
@@ -47,6 +48,7 @@ export function TransactionsTable() {
   const api = useApi()
   const [, navigate] = useLocation()
   const search = useSearch()
+  const { t } = useTranslation()
   const initial = useMemo(() => parseFilters(search), [search])
 
   const [status, setStatus] = useState<TransactionStatus | ''>(initial.status ?? '')
@@ -115,7 +117,7 @@ export function TransactionsTable() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch (e) {
-      setExportError(e instanceof Error ? e.message : 'Export failed')
+      setExportError(e instanceof Error ? e.message : t('transactions.exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -130,12 +132,12 @@ export function TransactionsTable() {
 
   return (
     <div className="page">
-      <PageHeader title="Transactions" subtitle="All business receipts" />
+      <PageHeader title={t('transactions.allTitle')} subtitle={t('transactions.allSubtitle')} />
 
       <div className="toolbar">
-        <div className="text-muted">{data ? `${data.total} total` : ''}</div>
+        <div className="text-muted">{data ? t('transactions.total', { count: data.total }) : ''}</div>
         <button className="export-button" onClick={onExport} disabled={exporting}>
-          {exporting ? 'Exporting…' : '⬇ Export Excel'}
+          {exporting ? t('transactions.exporting') : `⬇ ${t('transactions.export')}`}
         </button>
       </div>
 
@@ -143,12 +145,12 @@ export function TransactionsTable() {
 
       <div className="filters-bar">
         <select value={status} onChange={(e) => resetPageAnd(setStatus as (v: string) => void)(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="needs_review">Needs review</option>
-          <option value="recorded">Recorded</option>
+          <option value="">{t('transactions.allStatuses')}</option>
+          <option value="needs_review">{t('common.needsReview')}</option>
+          <option value="recorded">{t('common.recorded')}</option>
         </select>
         <select value={waiterId} onChange={(e) => resetPageAnd(setWaiterId)(e.target.value)}>
-          <option value="">All waiters</option>
+          <option value="">{t('transactions.allWaiters')}</option>
           {waiterOptions.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name}
@@ -156,15 +158,15 @@ export function TransactionsTable() {
           ))}
         </select>
         <select value={bank} onChange={(e) => resetPageAnd(setBank)(e.target.value)}>
-          <option value="">All banks</option>
+          <option value="">{t('transactions.allBanks')}</option>
           {bankOptions.map((b) => (
             <option key={b} value={b}>
               {b}
             </option>
           ))}
         </select>
-        <input type="date" value={from} onChange={(e) => resetPageAnd(setFrom)(e.target.value)} aria-label="From date" />
-        <input type="date" value={to} onChange={(e) => resetPageAnd(setTo)(e.target.value)} aria-label="To date" />
+        <input type="date" value={from} onChange={(e) => resetPageAnd(setFrom)(e.target.value)} aria-label={t('common.from')} />
+        <input type="date" value={to} onChange={(e) => resetPageAnd(setTo)(e.target.value)} aria-label={t('common.to')} />
       </div>
 
       {isLoading ? (
@@ -172,7 +174,7 @@ export function TransactionsTable() {
       ) : isError ? (
         <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
       ) : items.length === 0 ? (
-        <EmptyState title="No transactions" hint="Try adjusting the filters." />
+        <EmptyState title={t('transactions.noTransactions')} hint={t('transactions.adjustFilters')} />
       ) : (
         <>
           <div className="transaction-list">
@@ -191,9 +193,9 @@ export function TransactionsTable() {
                   <div style={{ textAlign: 'right' }}>
                     <div className="tx-amount">{formatEtb(tx.amount)}</div>
                     <div className="flex" style={{ gap: 4, marginTop: 4, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                      {tx.status === 'needs_review' && <span className="chip chip--warning">⚠️ Review</span>}
-                      {tx.isDuplicate && <span className="chip chip--alert">Duplicate</span>}
-                      {tx.editedByUploader && <span className="chip chip--alert">Edited</span>}
+                      {tx.status === 'needs_review' && <span className="chip chip--warning">⚠️ {t('common.review')}</span>}
+                      {tx.isDuplicate && <span className="chip chip--alert">{t('common.duplicate')}</span>}
+                      {tx.editedByUploader && <span className="chip chip--alert">{t('common.edited')}</span>}
                     </div>
                   </div>
                 </div>
@@ -203,15 +205,15 @@ export function TransactionsTable() {
 
           <div className="pagination">
             <button className="action-button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              ← Prev
+              ← {t('transactions.prev')}
             </button>
-            <span className="page-indicator">Page {page}</span>
+            <span className="page-indicator">{t('transactions.page', { page })}</span>
             <button
               className="action-button"
               disabled={!data?.hasMore}
               onClick={() => setPage((p) => p + 1)}
             >
-              Next →
+              {t('transactions.next')} →
             </button>
           </div>
         </>
