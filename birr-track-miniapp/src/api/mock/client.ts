@@ -82,6 +82,12 @@ export class MockApiClient implements ApiClient {
     if (params?.bank) {
       items = items.filter((t) => t.bankName === params.bank)
     }
+    if (params?.duplicate) {
+      items = items.filter((t) => t.isDuplicate)
+    }
+    if (params?.edited) {
+      items = items.filter((t) => t.editedByUploader)
+    }
     if (params?.from) {
       items = items.filter((t) => t.createdAt >= params.from!)
     }
@@ -156,6 +162,10 @@ export class MockApiClient implements ApiClient {
     return new Blob(['mock export'], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
+  }
+
+  async createTransactionExportDownload(): Promise<null> {
+    return null
   }
 
   async getTransactionImage(id: string): Promise<Blob> {

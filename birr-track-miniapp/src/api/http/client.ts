@@ -171,7 +171,7 @@ function toRegistration(w: WireRegistration): Registration {
  * Build a transaction filter query for the backend.
  * Note the field-name differences: `from`/`to` → `startDate`/`endDate`,
  * `page`/`pageSize` → `page`/`limit`, and waiter filtering is by Telegram user
- * id (the only key the backend transactions list accepts).
+ * id (the backend stores both the user id and denormalized Telegram id).
  */
 function toTransactionQuery(
   params: (TransactionFilters & PageParams) | undefined,
@@ -180,8 +180,12 @@ function toTransactionQuery(
   const query: Record<string, string | number | undefined> = {}
   if (params?.page) query.page = params.page
   if (params?.pageSize) query.limit = params.pageSize
-  if (params?.from) query.startDate = params.from
-  if (params?.to) query.endDate = params.to
+  if (params?.from) query.startDate = toBackendDate(params.from, false)
+  if (params?.to) query.endDate = toBackendDate(params.to, true)
+  if (params?.status) query.status = params.status
+  if (params?.bank) query.bank = params.bank
+  if (params?.duplicate) query.duplicate = '1'
+  if (params?.edited) query.edited = '1'
   if (params?.waiterId) {
     // The Mini App filters by userId; the backend list filters by telegramUserId.
     query.telegramUserId = waiterTelegramIds.get(params.waiterId) ?? params.waiterId
@@ -189,12 +193,20 @@ function toTransactionQuery(
   return query
 }
 
+/** Date inputs are calendar dates. Expand them to an inclusive EAT day before
+ * sending them to the timestamptz API; otherwise `endDate=YYYY-MM-DD` means
+ * midnight and drops the rest of the selected day. */
+function toBackendDate(value: string, endOfDay: boolean): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  return `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}+03:00`
+}
+
 /**
  * Real HTTP API client. Implements the same `ApiClient` interface as the mock,
  * so every view works unchanged once this is provided.
  *
- * Some Mini App filters (status, bank) have no backend query param yet, so they
- * are applied client-side on the returned page (documented inline).
+ * The backend applies all table filters server-side, including status and bank,
+ * so pagination and Excel export use the same result set.
  */
 export class HttpApiClient implements ApiClient {
   private readonly fetcher: HttpFetcher
@@ -258,15 +270,18 @@ export class HttpApiClient implements ApiClient {
   }
 
   async listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>> {
+    // Capture the translation while we still have both ids from the wire row.
+    // This makes a waiter selected from the table work even when the dashboard
+    // summary has not been opened first.
     const page = await this.fetcher.request<WirePage>('/transactions', {
       query: toTransactionQuery(params, this.waiterTelegramIds),
     })
 
-    let items = page.items.map(toTransaction)
+    for (const row of page.items) {
+      if (row.userId && row.telegramUserId) this.waiterTelegramIds.set(row.userId, row.telegramUserId)
+    }
 
-    // Status and bank filters have no backend query param; apply them here.
-    if (params?.status) items = items.filter((t) => t.status === params.status)
-    if (params?.bank) items = items.filter((t) => t.bankName === params.bank)
+    const items = page.items.map(toTransaction)
 
     const pageNum = page.page
     const pageSize = page.limit
@@ -346,15 +361,19 @@ export class HttpApiClient implements ApiClient {
   /** Authenticated Excel export → Blob (the button object-URLs it for download). */
   async exportTransactions(params?: TransactionFilters): Promise<Blob> {
     return this.fetcher.request<Blob>('/transactions/export', {
-      query: {
-        startDate: params?.from,
-        endDate: params?.to,
-        telegramUserId: params?.waiterId
-          ? (this.waiterTelegramIds.get(params.waiterId) ?? params.waiterId)
-          : undefined,
-      },
+      query: toTransactionQuery(params, this.waiterTelegramIds),
       responseType: 'blob',
     })
+  }
+
+  async createTransactionExportDownload(params?: TransactionFilters): Promise<{ url: string; fileName: string }> {
+    const result = await this.fetcher.request<{ token: string; fileName: string }>('/transactions/export-link', {
+      method: 'POST',
+      query: toTransactionQuery(params, this.waiterTelegramIds),
+    })
+    const url = new URL(`${this.baseUrl}/transactions/export/download`)
+    url.searchParams.set('token', result.token)
+    return { url: url.toString(), fileName: result.fileName }
   }
 
   /** Authenticated receipt image → Blob (for object-URL into <img>). */

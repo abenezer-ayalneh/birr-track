@@ -2,11 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation, useSearch } from 'wouter'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { downloadFile, openLink } from '@telegram-apps/sdk'
 import type { Transaction, TransactionStatus } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
 import { useApi } from '../lib/useApi'
 import { formatEtb, formatShortDate } from '../lib/format'
 import { usePageRefresh } from '../lib/useRefresh'
+import { isInTelegram } from '../lib/telegram'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import '../styles/waiter.css'
 import '../styles/admin.css'
@@ -66,6 +68,8 @@ export function TransactionsTable() {
     bank: bank || undefined,
     from: from || undefined,
     to: to || undefined,
+    duplicate: initial.duplicate || undefined,
+    edited: initial.edited || undefined,
     page,
     pageSize: PAGE_SIZE,
   }
@@ -101,13 +105,31 @@ export function TransactionsTable() {
     setExporting(true)
     setExportError(null)
     try {
-      const blob = await api.exportTransactions({
+      const exportParams = {
         status: status || undefined,
         waiterId: waiterId || undefined,
         bank: bank || undefined,
         from: from || undefined,
         to: to || undefined,
-      })
+        duplicate: initial.duplicate || undefined,
+        edited: initial.edited || undefined,
+      }
+
+      if (isInTelegram()) {
+        const download = await api.createTransactionExportDownload(exportParams)
+        if (download) {
+          if (downloadFile.isAvailable()) {
+            await downloadFile(download.url, download.fileName)
+          } else if (openLink.isAvailable()) {
+            openLink(download.url)
+          } else {
+            window.location.assign(download.url)
+          }
+          return
+        }
+      }
+
+      const blob = await api.exportTransactions(exportParams)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -115,7 +137,9 @@ export function TransactionsTable() {
       document.body.appendChild(a)
       a.click()
       a.remove()
-      URL.revokeObjectURL(url)
+      // Some Telegram/iOS WebViews resolve the download asynchronously. Keep
+      // the object URL alive long enough for the navigation to start.
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (e) {
       setExportError(e instanceof Error ? e.message : t('transactions.exportFailed'))
     } finally {

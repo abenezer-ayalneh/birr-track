@@ -75,6 +75,8 @@ export interface TransactionFilters {
   status?: TransactionStatus
   waiterId?: string
   bank?: string
+  duplicate?: boolean
+  edited?: boolean
   /** ISO date, inclusive. */
   from?: string
   /** ISO date, inclusive. */

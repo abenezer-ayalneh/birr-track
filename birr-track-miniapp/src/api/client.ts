@@ -39,6 +39,8 @@ export interface ApiClient {
   getSummary(params?: { from?: string; to?: string }): Promise<Summary>
   /** Excel export of the (optionally filtered) business transactions. */
   exportTransactions(params?: TransactionFilters): Promise<Blob>
+  /** Short-lived HTTPS download used by Telegram's native file downloader. */
+  createTransactionExportDownload(params?: TransactionFilters): Promise<{ url: string; fileName: string } | null>
   /** Authenticated receipt image fetched as a Blob (Bearer header can't ride <img src>). */
   getTransactionImage(id: string): Promise<Blob>
 

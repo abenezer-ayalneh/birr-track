@@ -11,13 +11,14 @@
  * module only knows how to produce an initData string for whichever path runs.
  */
 
-import { closeMiniApp, isTMA, retrieveRawInitData } from '@telegram-apps/sdk'
+import { closeMiniApp, init as initTelegramSdk, isTMA, retrieveRawInitData } from '@telegram-apps/sdk'
 
 import type { Role } from '../api/types'
 import { setMockRole } from '../api/mock/client'
 
 let _cachedInitData = ''
 let _isInTelegram = false
+let _sdkInitialized = false
 
 /**
  * Dev fallback initData. The role comes from VITE_DEV_ROLE env var or the
@@ -68,6 +69,10 @@ export async function initTelegram(): Promise<void> {
 
   if (_isInTelegram) {
     try {
+      if (!_sdkInitialized) {
+        initTelegramSdk()
+        _sdkInitialized = true
+      }
       const raw = retrieveRawInitData()
       if (raw) {
         _cachedInitData = raw

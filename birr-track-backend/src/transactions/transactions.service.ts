@@ -363,6 +363,22 @@ export class TransactionsService {
 			})
 		}
 
+		if (queryDto.status) {
+			query.andWhere('transaction.status = :status', { status: queryDto.status })
+		}
+
+		if (queryDto.bank) {
+			query.andWhere('transaction.bankName = :bank', { bank: queryDto.bank })
+		}
+
+		if (queryDto.duplicate) {
+			query.andWhere('transaction.isDuplicate = :isDuplicate', { isDuplicate: true })
+		}
+
+		if (queryDto.edited) {
+			query.andWhere('transaction.editedByUploader = :editedByUploader', { editedByUploader: true })
+		}
+
 		return query
 	}
 
