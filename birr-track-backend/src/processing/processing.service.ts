@@ -44,10 +44,19 @@ export class ProcessingService {
 	async processImageJob(payload: ImageProcessingJobPayload): Promise<void> {
 		this.logger.log(`Processing receipt for telegram user ${payload.telegramUserId}`)
 
-		const user = await this.usersService.findByTelegramId(payload.telegramUserId)
-		if (!user || !user.businessId) {
-			this.logger.warn(`No active business membership for user ${payload.telegramUserId}; skipping processing`)
-			return
+		// Receipt acceptance captures the membership identity. Use it even after a
+		// departure so an acknowledged receipt cannot be dropped or attributed to a
+		// later Business membership. Legacy queue jobs still use the active lookup.
+		let userId = payload.userId
+		let businessId = payload.businessId
+		if (!userId || !businessId) {
+			const user = await this.usersService.findByTelegramId(payload.telegramUserId)
+			if (!user || !user.businessId) {
+				this.logger.warn(`No active business membership for user ${payload.telegramUserId}; skipping legacy processing job`)
+				return
+			}
+			userId = user.id
+			businessId = user.businessId
 		}
 
 		let fileUrl: string
@@ -79,15 +88,15 @@ export class ProcessingService {
 
 		let duplicate = false
 		if (isComplete && parsed.amount !== null && parsed.transactionId !== null && parsed.timestamp !== null) {
-			const existingDuplicate = await this.transactionsService.findDuplicate(user.businessId, parsed.transactionId, parsed.amount, parsed.timestamp)
+			const existingDuplicate = await this.transactionsService.findDuplicate(businessId, parsed.transactionId, parsed.amount, parsed.timestamp)
 			duplicate = Boolean(existingDuplicate)
 		}
 
 		const createDto: CreateTransactionDto = {
 			telegramUserId: payload.telegramUserId,
 			telegramName: payload.telegramName,
-			businessId: user.businessId,
-			userId: user.id,
+			businessId,
+			userId,
 			amount: parsed.amount ?? undefined,
 			transactionId: parsed.transactionId ?? undefined,
 			timestamp: parsed.timestamp ?? undefined,

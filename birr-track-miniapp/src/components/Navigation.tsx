@@ -7,6 +7,7 @@ const ICONS: Record<string, string> = {
   dashboard: '📊',
   staff: '👥',
   registrations: '✅',
+  account: '👤',
 }
 
 interface NavItem {
@@ -21,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard', labelKey: 'nav.dashboard', icon: ICONS.dashboard, roles: ['manager', 'owner'] },
   { path: '/staff', labelKey: 'nav.staff', icon: ICONS.staff, roles: ['manager', 'owner'] },
   { path: '/registrations', labelKey: 'nav.platform', icon: ICONS.registrations, roles: ['platform_owner'] },
+  { path: '/account', labelKey: 'nav.account', icon: ICONS.account, roles: ['waiter', 'manager', 'owner'] },
 ]
 
 export function Navigation({ role }: { role: Role }) {

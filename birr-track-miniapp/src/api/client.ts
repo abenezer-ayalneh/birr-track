@@ -1,4 +1,5 @@
 import type {
+	AccountMembership,
   BusinessListing,
   Invite,
   Me,
@@ -24,6 +25,10 @@ export interface ApiClient {
   me(): Promise<Me>
   updateLanguage(language: Language): Promise<Language>
 
+  // Account membership
+  getAccount(): Promise<AccountMembership>
+  leaveBusiness(): Promise<void>
+
   // Transactions
   listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>>
   getTransaction(id: string): Promise<TransactionDetail>
@@ -41,7 +46,7 @@ export interface ApiClient {
   listStaff(): Promise<StaffMember[]>
   promoteToManager(userId: string): Promise<StaffMember>
   demoteToWaiter(userId: string): Promise<StaffMember>
-  removeStaff(userId: string): Promise<void>
+  removeStaff(userId: string, reason?: string): Promise<void>
   listInvites(): Promise<Invite[]>
   revokeInvite(inviteId: string): Promise<Invite>
 

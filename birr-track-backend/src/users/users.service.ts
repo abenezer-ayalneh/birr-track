@@ -1,9 +1,12 @@
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
-import { IsNull, Repository } from 'typeorm'
+import { DataSource, IsNull, Repository } from 'typeorm'
 
+import { AdminPanelSessionService } from '../auth/admin-panel-session.service'
+import { Invite } from '../invites/entities/invite.entity'
 import { SupportedLanguage, User, UserRole } from './entities/user.entity'
+import { MembershipDepartureEvent, MembershipEventsService } from './membership-events.service'
 
 const ROLE_RANK: Record<UserRole, number> = { waiter: 1, manager: 2, owner: 3 }
 
@@ -23,6 +26,9 @@ export class UsersService {
 		@InjectRepository(User)
 		private readonly userRepository: Repository<User>,
 		private readonly configService: ConfigService,
+		private readonly dataSource: DataSource,
+		private readonly adminPanelSessions: AdminPanelSessionService,
+		private readonly membershipEvents: MembershipEventsService,
 	) {}
 
 	/** The Platform Owner is the app operator, identified by env var — not a `users` row. */
@@ -44,6 +50,19 @@ export class UsersService {
 	/** Find a user by ID (active members only). */
 	async findById(id: string): Promise<User | null> {
 		return this.userRepository.findOne({ where: { id, removedAt: IsNull() } })
+	}
+
+	async getAccount(id: string): Promise<{ userId: string; displayName: string; role: UserRole; business: { id: string; name: string; status: string } }> {
+		const user = await this.userRepository.findOne({ where: { id, removedAt: IsNull() }, relations: { business: true } })
+		if (!user || !user.businessId || !user.business) {
+			throw new NotFoundException(`User ${id} does not have an active business membership`)
+		}
+		return {
+			userId: user.id,
+			displayName: user.displayName,
+			role: user.role,
+			business: { id: user.business.id, name: user.business.name, status: user.business.status },
+		}
 	}
 
 	/** Get all active staff members in a business. */
@@ -114,6 +133,7 @@ export class UsersService {
 
 		target.role = 'manager'
 		const saved = await this.userRepository.save(target)
+		await this.adminPanelSessions.revokeAllForUser(saved.id)
 		this.logger.log(`User ${target.id} promoted to manager by ${actor.id}`)
 		return saved
 	}
@@ -134,6 +154,7 @@ export class UsersService {
 
 		target.role = 'waiter'
 		const saved = await this.userRepository.save(target)
+		await this.adminPanelSessions.revokeAllForUser(saved.id)
 		this.logger.log(`User ${target.id} demoted to waiter by ${actor.id}`)
 		return saved
 	}
@@ -142,23 +163,61 @@ export class UsersService {
 	 * Soft removal — sets `removedAt` so the user's Transactions stay attributable.
 	 * Managers can remove waiters; only the owner can remove managers; the owner cannot be removed.
 	 */
-	async remove(actor: User, targetUserId: string): Promise<User> {
-		const target = await this.findActiveTeammate(actor, targetUserId)
+	async remove(actor: User, targetUserId: string, reason?: string): Promise<User> {
+		const { user } = await this.endMembership(actor, targetUserId, 'removed', reason)
+		return user
+	}
 
-		if (target.role === 'owner') {
-			throw new ForbiddenException('The owner cannot be removed')
+	/** A waiter or manager may voluntarily end their own membership; an owner may not. */
+	async leaveBusiness(userId: string): Promise<void> {
+		const actor = await this.findById(userId)
+		if (!actor) {
+			throw new NotFoundException(`User ${userId} not found`)
 		}
-		if (target.role === 'manager' && actor.role !== 'owner') {
-			throw new ForbiddenException('Only the owner can remove a manager')
-		}
-		if (target.role === 'waiter' && !this.hasRoleAtLeast(actor, 'manager')) {
-			throw new ForbiddenException('Only a manager or the owner can remove a waiter')
-		}
+		await this.endMembership(actor, userId, 'left')
+	}
 
-		target.removedAt = new Date()
-		const saved = await this.userRepository.save(target)
-		this.logger.log(`User ${target.id} removed by ${actor.id}`)
-		return saved
+	private async endMembership(actor: User, targetUserId: string, kind: MembershipDepartureEvent['kind'], reason?: string): Promise<{ user: User }> {
+		const normalizedReason = reason?.trim() || undefined
+		const outcome = await this.dataSource.transaction(async (manager) => {
+			const users = manager.getRepository(User)
+			const invites = manager.getRepository(Invite)
+			const target = await users.findOne({ where: { id: targetUserId, removedAt: IsNull() }, lock: { mode: 'pessimistic_write' } })
+
+			if (!target || actor.businessId === null || target.businessId !== actor.businessId) {
+				throw new NotFoundException(`User ${targetUserId} not found in this business`)
+			}
+			if (target.role === 'owner') {
+				throw new ForbiddenException('The owner cannot leave or be removed')
+			}
+			if (kind === 'removed') {
+				if (target.role === 'manager' && actor.role !== 'owner') {
+					throw new ForbiddenException('Only the owner can remove a manager')
+				}
+				if (target.role === 'waiter' && !this.hasRoleAtLeast(actor, 'manager')) {
+					throw new ForbiddenException('Only a manager or the owner can remove a waiter')
+				}
+			}
+
+			target.removedAt = new Date()
+			const saved = await users.save(target)
+			if (target.role === 'manager') {
+				await invites.update({ businessId: target.businessId, createdByUserId: target.id, status: 'pending' }, { status: 'revoked' })
+			}
+			return saved
+		})
+
+		await this.adminPanelSessions.revokeAllForUser(outcome.id)
+		const event: MembershipDepartureEvent = {
+			kind,
+			member: outcome,
+			businessId: outcome.businessId,
+			actor: kind === 'removed' ? actor : undefined,
+			reason: kind === 'removed' ? normalizedReason : undefined,
+		}
+		this.membershipEvents.publish(event)
+		this.logger.log(`User ${outcome.id} ${kind === 'left' ? 'left' : 'was removed from'} business ${outcome.businessId}`)
+		return { user: outcome }
 	}
 
 	private async findActiveTeammate(actor: User, targetUserId: string): Promise<User> {

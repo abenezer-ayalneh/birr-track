@@ -1,10 +1,11 @@
-import { Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common'
 
 import { JwtPayload } from '../auth/auth.service'
 import { AuthUserPayload } from '../auth/decorators/auth-user.decorator'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
+import { RemoveStaffDto } from './dto/remove-staff.dto'
 import { UsersService } from './users.service'
 
 export type StaffMember = {
@@ -29,13 +30,13 @@ export class StaffController {
 
 	@Delete(':userId')
 	@Roles('manager', 'owner')
-	async removeStaff(@Param('userId', ParseUUIDPipe) userId: string, @AuthUserPayload() auth: JwtPayload) {
+	async removeStaff(@Param('userId', ParseUUIDPipe) userId: string, @Body() dto: RemoveStaffDto, @AuthUserPayload() auth: JwtPayload) {
 		this.validateManagerAccess(auth)
 		const actor = await this.usersService.findById(auth.userId)
 		if (!actor) {
 			throw new ForbiddenException('User not found')
 		}
-		return this.usersService.remove(actor, userId)
+		return this.usersService.remove(actor, userId, dto.reason)
 	}
 
 	@Post(':userId/promote')

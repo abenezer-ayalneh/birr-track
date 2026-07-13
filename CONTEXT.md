@@ -11,16 +11,28 @@ A person's selected interface language for Birr Track bot and Admin Panel text. 
 _Avoid_: locale, translation setting
 
 **Waiter**:
-A staff member of a Business who submits Receipts through the Telegram bot. Identified by their Telegram account.
+A member of a Business who submits Receipts through the Telegram bot. Identified by their Telegram account and may leave the Business voluntarily.
 _Avoid_: staff, employee, uploader
 
 **Manager**:
-A Waiter with additional rights: reviews reports in the Admin Panel and manages the Waiters of their Business. Everything a Waiter can do, a Manager can do. Cannot manage other Managers.
+A Waiter with additional rights: reviews reports in the Admin Panel and manages the Waiters of their Business. May leave voluntarily; cannot manage other Managers.
 _Avoid_: admin
 
 **Owner**:
 The Manager who registered the Business. The only role that can add, remove, or demote Managers. Everything a Manager can do, the Owner can do. Exactly one per Business.
 _Avoid_: business admin, founder
+
+**Business Membership**:
+A Telegram account's active association with exactly one Business and a role. It ends when the member leaves or is removed and may later be reactivated through a new Invite or registration.
+_Avoid_: assignment, staff record
+
+**Leave**:
+The voluntary end of a Waiter or Manager's Business Membership.
+_Avoid_: self-remove, unassign
+
+**Remove**:
+The administrative end of another member's Business Membership by an authorized Manager or Owner.
+_Avoid_: delete user, fire
 
 **Platform Owner**:
 The operator of Birr Track itself (not of any Business). Approves Business registrations and oversees the platform.

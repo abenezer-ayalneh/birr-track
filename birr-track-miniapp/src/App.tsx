@@ -11,6 +11,7 @@ import { Staff } from './pages/Staff'
 import { Registrations } from './pages/Registrations'
 import { Home } from './pages/Home'
 import { NotFound } from './pages/NotFound'
+import { Account } from './pages/Account'
 import { initTelegram } from './lib/telegram'
 import { initTheme } from './lib/theme'
 import { createApiClient } from './api/factory'
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/staff" component={Staff} />
         <Route path="/registrations" component={Registrations} />
+        <Route path="/account" component={Account} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

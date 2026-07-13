@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Invite, StaffMember } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
@@ -7,6 +8,7 @@ import { useRole } from '../lib/useRole'
 import { formatDate } from '../lib/format'
 import { usePageRefresh } from '../lib/useRefresh'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import '../styles/admin.css'
 
 const BOT_USERNAME = import.meta.env.VITE_BOT_USERNAME
@@ -26,6 +28,8 @@ export function Staff() {
   const queryClient = useQueryClient()
   const { role: myRole } = useRole()
   const { t } = useTranslation()
+  const [removalTarget, setRemovalTarget] = useState<StaffMember | null>(null)
+  const [removalReason, setRemovalReason] = useState('')
 
   const staffQuery = useQuery({ queryKey: ['staff'], queryFn: () => api.listStaff() })
   const invitesQuery = useQuery({ queryKey: ['invites'], queryFn: () => api.listInvites() })
@@ -38,7 +42,14 @@ export function Staff() {
 
   const promote = useMutation({ mutationFn: (id: string) => api.promoteToManager(id), onSuccess: invalidate })
   const demote = useMutation({ mutationFn: (id: string) => api.demoteToWaiter(id), onSuccess: invalidate })
-  const remove = useMutation({ mutationFn: (id: string) => api.removeStaff(id), onSuccess: invalidate })
+  const remove = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => api.removeStaff(id, reason),
+    onSuccess: () => {
+      invalidate()
+      setRemovalTarget(null)
+      setRemovalReason('')
+    },
+  })
   const revoke = useMutation({ mutationFn: (id: string) => api.revokeInvite(id), onSuccess: invalidate })
 
   const mutating = promote.isPending || demote.isPending || remove.isPending
@@ -105,13 +116,38 @@ export function Staff() {
                 </button>
               )}
               {canRemove(member) && (
-                <button className="action-button action-button--danger" disabled={mutating} onClick={() => remove.mutate(member.userId)}>
+                <button className="action-button action-button--danger" disabled={mutating} onClick={() => setRemovalTarget(member)}>
                   {t('staff.remove')}
                 </button>
               )}
             </div>
           </div>
         ))
+      )}
+
+      {removalTarget && (
+        <ConfirmDialog
+          title={t('staff.removeConfirmTitle')}
+          confirmLabel={remove.isPending ? t('staff.removing') : t('staff.remove')}
+          cancelLabel={t('common.cancel')}
+          busy={remove.isPending}
+          onConfirm={() => remove.mutate({ id: removalTarget.userId, reason: removalReason })}
+          onCancel={() => {
+            setRemovalTarget(null)
+            setRemovalReason('')
+          }}
+        >
+          <p>{t('staff.removeConfirmBody', { displayName: removalTarget.displayName })}</p>
+          <label className="form-label" htmlFor="remove-reason">{t('staff.removeReason')}</label>
+          <textarea
+            id="remove-reason"
+            className="form-input"
+            value={removalReason}
+            maxLength={500}
+            placeholder={t('staff.removeReasonPlaceholder')}
+            onChange={(event) => setRemovalReason(event.target.value)}
+          />
+        </ConfirmDialog>
       )}
 
       <div className="section-title">{t('staff.pendingInvites')}</div>

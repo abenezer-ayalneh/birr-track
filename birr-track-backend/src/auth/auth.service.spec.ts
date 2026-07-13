@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Test, TestingModule } from '@nestjs/testing'
@@ -38,6 +39,7 @@ describe('AuthService', () => {
 					useValue: {
 						isPlatformOwner: jest.fn(),
 						findByTelegramId: jest.fn(),
+						findById: jest.fn().mockResolvedValue(mockUser),
 					},
 				},
 				{
@@ -210,7 +212,7 @@ describe('AuthService', () => {
 			expect(result.payload.role).toBe('platform_owner')
 			expect(result.payload.sessionId).toBe('session-1')
 			expect(result.payload.telegramUserId).toBe(mockPlatformOwnerId)
-			expect(adminPanelSessions.create).toHaveBeenCalledWith(
+			expect(adminPanelSessions.create as jest.Mock).toHaveBeenCalledWith(
 				expect.objectContaining({ role: 'platform_owner', telegramUserId: mockPlatformOwnerId }),
 			)
 		})
@@ -271,7 +273,7 @@ describe('AuthService', () => {
 
 			const result = await service.refreshAdminPanelSession({ sessionId: 'session-1', refreshToken: 'refresh-1' })
 
-			expect(adminPanelSessions.renew).toHaveBeenCalledWith('session-1', 'refresh-1')
+			expect(adminPanelSessions.renew as jest.Mock).toHaveBeenCalledWith('session-1', 'refresh-1')
 			expect(result.response.accessToken).toBeTruthy()
 			expect(result.response.sessionId).toBe('session-1')
 			expect(result.response.refreshToken).toBe('refresh-1')
@@ -283,7 +285,7 @@ describe('AuthService', () => {
 		it('should revoke an Admin Panel Session on logout', async () => {
 			await service.logout({ sessionId: 'session-1', refreshToken: 'refresh-1' })
 
-			expect(adminPanelSessions.revoke).toHaveBeenCalledWith('session-1')
+			expect(adminPanelSessions.revoke as jest.Mock).toHaveBeenCalledWith('session-1')
 		})
 	})
 })

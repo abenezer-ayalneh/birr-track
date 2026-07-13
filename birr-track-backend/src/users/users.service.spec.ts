@@ -3,15 +3,20 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import { ConfigService } from '@nestjs/config'
 import { Test, TestingModule } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
-import { IsNull, Repository } from 'typeorm'
+import { DataSource, IsNull, Repository } from 'typeorm'
 
+import { AdminPanelSessionService } from '../auth/admin-panel-session.service'
 import { User } from './entities/user.entity'
+import { MembershipEventsService } from './membership-events.service'
 import { UsersService } from './users.service'
 
 describe('UsersService', () => {
 	let service: UsersService
 	let userRepository: Repository<User>
 	let configService: ConfigService
+	let inviteRepository: { update: jest.Mock }
+	let adminPanelSessions: AdminPanelSessionService
+	let membershipEvents: MembershipEventsService
 
 	const mockUser: User = {
 		id: 'user-1',
@@ -50,17 +55,35 @@ describe('UsersService', () => {
 	}
 
 	beforeEach(async () => {
+		const userRepositoryMock = {
+			findOne: jest.fn(),
+			create: jest.fn(),
+			save: jest.fn(),
+			find: jest.fn(),
+		}
+		const inviteRepositoryMock = { update: jest.fn() }
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				UsersService,
 				{
 					provide: getRepositoryToken(User),
+					useValue: userRepositoryMock,
+				},
+				{
+					provide: DataSource,
 					useValue: {
-						findOne: jest.fn(),
-						create: jest.fn(),
-						save: jest.fn(),
-						find: jest.fn(),
+						transaction: jest.fn((callback: (manager: { getRepository: (entity: unknown) => unknown }) => unknown) =>
+							callback({ getRepository: (entity: unknown) => (entity === User ? userRepositoryMock : inviteRepositoryMock) }),
+						),
 					},
+				},
+				{
+					provide: AdminPanelSessionService,
+					useValue: { revokeAllForUser: jest.fn() },
+				},
+				{
+					provide: MembershipEventsService,
+					useValue: { publish: jest.fn() },
 				},
 				{
 					provide: ConfigService,
@@ -74,6 +97,9 @@ describe('UsersService', () => {
 		service = module.get<UsersService>(UsersService)
 		userRepository = module.get<Repository<User>>(getRepositoryToken(User))
 		configService = module.get<ConfigService>(ConfigService)
+		inviteRepository = inviteRepositoryMock
+		adminPanelSessions = module.get<AdminPanelSessionService>(AdminPanelSessionService)
+		membershipEvents = module.get<MembershipEventsService>(MembershipEventsService)
 	})
 
 	describe('isPlatformOwner', () => {
@@ -265,6 +291,29 @@ describe('UsersService', () => {
 			jest.spyOn(userRepository, 'findOne').mockResolvedValueOnce(otherBusinessUser)
 
 			await expect(service.remove(mockManager, mockUser.id)).rejects.toThrow(NotFoundException)
+		})
+	})
+
+	describe('leaveBusiness', () => {
+		it('should let a manager leave, revoke their sessions, and revoke their pending invites', async () => {
+			const managerCopy = { ...mockManager }
+			jest.spyOn(userRepository, 'findOne').mockResolvedValue(managerCopy)
+			jest.spyOn(userRepository, 'save').mockResolvedValue({ ...managerCopy, removedAt: new Date() })
+
+			await service.leaveBusiness(mockManager.id)
+
+			expect(inviteRepository.update).toHaveBeenCalledWith(
+				{ businessId: mockManager.businessId, createdByUserId: mockManager.id, status: 'pending' },
+				{ status: 'revoked' },
+			)
+			expect(adminPanelSessions.revokeAllForUser).toHaveBeenCalledWith(mockManager.id)
+			expect(membershipEvents.publish).toHaveBeenCalledWith(expect.objectContaining({ kind: 'left', businessId: mockManager.businessId }))
+		})
+
+		it('should reject an owner leaving', async () => {
+			jest.spyOn(userRepository, 'findOne').mockResolvedValue(mockOwner)
+
+			await expect(service.leaveBusiness(mockOwner.id)).rejects.toThrow(ForbiddenException)
 		})
 	})
 

@@ -120,6 +120,13 @@ export interface StaffMember {
   joinedAt: string
 }
 
+export interface AccountMembership {
+  userId: string
+  displayName: string
+  role: StaffRole
+  business: Pick<Business, 'id' | 'name' | 'status'>
+}
+
 export type InviteStatus = 'pending' | 'redeemed' | 'revoked' | 'expired'
 
 export interface Invite {

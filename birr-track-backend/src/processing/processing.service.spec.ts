@@ -274,6 +274,19 @@ describe('ProcessingService', () => {
 			expect(transactionsService.create).not.toHaveBeenCalled()
 		})
 
+		it('should use captured membership identifiers after the sender has left', async () => {
+			const capturedPayload: ImageProcessingJobPayload = { ...mockJobPayload, userId: 'user-old', businessId: 'business-old' }
+			jest.spyOn(vlmService, 'extract').mockResolvedValue(mockExtractedData)
+			jest.spyOn(storageService, 'uploadReceiptImage').mockResolvedValue('receipts/business-old/img-123')
+			jest.spyOn(transactionsService, 'findDuplicate').mockResolvedValue(null)
+			jest.spyOn(transactionsService, 'create').mockResolvedValue({ id: 'txn-captured', amount: '100.50' } as Transaction)
+
+			await service.processImageJob(capturedPayload)
+
+			expect(usersService.findByTelegramId).not.toHaveBeenCalled()
+			expect(transactionsService.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-old', businessId: 'business-old' }), 'recorded')
+		})
+
 		it('should create needs_review transaction when VLM service fails', async () => {
 			const mockFailedTxn: Transaction = {
 				id: 'txn-3',

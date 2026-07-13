@@ -77,6 +77,11 @@ export class AdminPanelSessionService implements OnModuleDestroy {
 		}
 
 		await this.redis.set(this.key(sessionId), JSON.stringify(record), 'EX', Math.max(1, idleExpiresAt - now))
+		if (payload.userId) {
+			const sessionsKey = this.userSessionsKey(payload.userId)
+			await this.redis.sadd(sessionsKey, sessionId)
+			await this.redis.expire(sessionsKey, Math.max(1, expiresAt - now))
+		}
 		return {
 			sessionId,
 			refreshToken,
@@ -132,10 +137,31 @@ export class AdminPanelSessionService implements OnModuleDestroy {
 
 	async revoke(sessionId: string): Promise<void> {
 		try {
+			const record = await this.get(sessionId)
 			await this.redis.del(this.key(sessionId))
+			if (record?.payload.userId) {
+				await this.redis.srem(this.userSessionsKey(record.payload.userId), sessionId)
+			}
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'unknown error'
 			this.logger.warn(`Failed to revoke Admin Panel Session ${sessionId}: ${message}`)
+		}
+	}
+
+	/** Revoke every known Admin Panel session for a regular user. */
+	async revokeAllForUser(userId: string): Promise<void> {
+		try {
+			const key = this.userSessionsKey(userId)
+			const sessionIds = await this.redis.smembers(key)
+			const pipeline = this.redis.pipeline()
+			for (const sessionId of sessionIds) {
+				pipeline.del(this.key(sessionId))
+			}
+			pipeline.del(key)
+			await pipeline.exec()
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : 'unknown error'
+			this.logger.warn(`Failed to revoke sessions for user ${userId}: ${message}`)
 		}
 	}
 
@@ -155,6 +181,10 @@ export class AdminPanelSessionService implements OnModuleDestroy {
 
 	private key(sessionId: string): string {
 		return `admin-panel-session:${sessionId}`
+	}
+
+	private userSessionsKey(userId: string): string {
+		return `admin-panel-user-sessions:${userId}`
 	}
 
 	private now(): number {

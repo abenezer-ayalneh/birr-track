@@ -6,6 +6,7 @@ import { Reflector } from '@nestjs/core'
 import { createHmac } from 'crypto'
 import { Request } from 'express'
 
+import { UsersService } from '../../users/users.service'
 import { AdminPanelSessionService } from '../admin-panel-session.service'
 import { JwtPayload } from '../auth.service'
 import { PUBLIC_ROUTE_KEY } from '../decorators/public-route.decorator'
@@ -26,6 +27,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
 		private readonly configService: ConfigService,
 		private readonly reflector: Reflector,
 		private readonly adminPanelSessions: AdminPanelSessionService,
+		private readonly usersService: UsersService,
 	) {
 		const webhookPath = this.configService.get<string>('TELEGRAM_WEBHOOK_PATH')?.trim()
 		if (webhookPath) {
@@ -76,6 +78,19 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
 		if (!(await this.adminPanelSessions.assertActive(payload.sessionId))) {
 			return false
+		}
+
+		// Tokens carry membership data for performance, but membership and role changes
+		// must take effect immediately even if Redis cleanup is unavailable.
+		if (payload.role !== 'platform_owner') {
+			if (!payload.userId) {
+				return false
+			}
+			const user = await this.usersService.findById(payload.userId)
+			if (!user || user.businessId !== payload.businessId || user.role !== payload.role || user.telegramUserId !== payload.telegramUserId) {
+				await this.adminPanelSessions.revoke(payload.sessionId ?? '')
+				return false
+			}
 		}
 
 		// Attach to request

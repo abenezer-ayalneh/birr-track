@@ -11,7 +11,7 @@
  * module only knows how to produce an initData string for whichever path runs.
  */
 
-import { isTMA, retrieveRawInitData } from '@telegram-apps/sdk'
+import { closeMiniApp, isTMA, retrieveRawInitData } from '@telegram-apps/sdk'
 
 import type { Role } from '../api/types'
 import { setMockRole } from '../api/mock/client'
@@ -100,4 +100,17 @@ export function getInitData(): string {
 /** True only when running inside a real Telegram Mini App. */
 export function isInTelegram(): boolean {
   return _isInTelegram
+}
+
+/** Close the Mini App in Telegram; browser development falls back to closing the tab when possible. */
+export function closeTelegramMiniApp(): void {
+  try {
+    if (_isInTelegram) {
+      closeMiniApp()
+      return
+    }
+  } catch {
+    // Browser fallback below.
+  }
+  window.close()
 }

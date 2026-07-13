@@ -13,6 +13,7 @@ import { UsersService } from '../users/users.service'
 import { ConversationService } from './flows/conversation.service'
 import { ReceiptService } from './flows/receipt.service'
 import { RegistrationService } from './flows/registration.service'
+import { MembershipNotificationsService } from './membership-notifications.service'
 import { createIdentityMiddleware, IdentityService } from './services/identity.service'
 import { TELEGRAM_BOT_NAME } from './telegram.constants'
 import { TelegramController } from './telegram.controller'
@@ -47,6 +48,14 @@ import { TelegramUpdateHandler } from './telegram.update'
 		}),
 	],
 	controllers: [TelegramController],
-	providers: [TelegramService, TelegramUpdateHandler, IdentityService, ConversationService, ReceiptService, RegistrationService],
+	providers: [
+		TelegramService,
+		TelegramUpdateHandler,
+		IdentityService,
+		ConversationService,
+		ReceiptService,
+		RegistrationService,
+		MembershipNotificationsService,
+	],
 })
 export class TelegramModule {}

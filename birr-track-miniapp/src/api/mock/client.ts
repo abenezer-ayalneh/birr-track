@@ -1,5 +1,6 @@
 import type { ApiClient } from '../client'
 import type {
+	AccountMembership,
   Invite,
   Language,
   Page,
@@ -56,6 +57,16 @@ export class MockApiClient implements ApiClient {
     currentLanguage = language
     localStorage.setItem('birr-track-language', language)
     return language
+  }
+
+  async getAccount(): Promise<AccountMembership> {
+    const me = await this.me()
+    if (!me.business || me.role === 'platform_owner') throw new Error('No business membership')
+    return { userId: me.userId, displayName: me.displayName, role: me.role, business: me.business }
+  }
+
+  async leaveBusiness(): Promise<void> {
+    // Keep the current mock role so the departure success state can be exercised.
   }
 
   async listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>> {

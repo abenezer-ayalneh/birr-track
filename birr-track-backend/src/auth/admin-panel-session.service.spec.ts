@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { AdminPanelSessionService } from './admin-panel-session.service'
 
 const store = new Map<string, string>()
+const sets = new Map<string, Set<string>>()
 
 jest.mock('ioredis', () => {
 	return jest.fn().mockImplementation(() => ({
@@ -13,7 +14,37 @@ jest.mock('ioredis', () => {
 		get: jest.fn(async (key: string) => store.get(key) ?? null),
 		del: jest.fn(async (key: string) => {
 			const existed = store.delete(key)
+			sets.delete(key)
 			return existed ? 1 : 0
+		}),
+		sadd: jest.fn(async (key: string, value: string) => {
+			const values = sets.get(key) ?? new Set<string>()
+			values.add(value)
+			sets.set(key, values)
+			return 1
+		}),
+		srem: jest.fn(async (key: string, value: string) => {
+			const values = sets.get(key)
+			return values?.delete(value) ? 1 : 0
+		}),
+		smembers: jest.fn(async (key: string) => [...(sets.get(key) ?? [])]),
+		expire: jest.fn(async () => 1),
+		pipeline: jest.fn(() => {
+			const commands: Array<() => void> = []
+			const pipeline = {
+				del: (key: string) => {
+					commands.push(() => {
+						store.delete(key)
+						sets.delete(key)
+					})
+					return pipeline
+				},
+				exec: async () => {
+					commands.forEach((command) => command())
+					return []
+				},
+			}
+			return pipeline
 		}),
 		quit: jest.fn(async () => 'OK'),
 	}))
@@ -25,6 +56,7 @@ describe('AdminPanelSessionService', () => {
 
 	beforeEach(() => {
 		store.clear()
+		sets.clear()
 		nowSeconds = 1_700_000_000
 		jest.spyOn(Date, 'now').mockImplementation(() => nowSeconds * 1000)
 		service = new AdminPanelSessionService({
@@ -121,5 +153,15 @@ describe('AdminPanelSessionService', () => {
 		await service.revoke(created.sessionId)
 
 		expect(await service.assertActive(created.sessionId)).toBe(false)
+	})
+
+	it('revokes every known session for a user', async () => {
+		const first = await service.create({ userId: 'user-1', businessId: 'business-1', role: 'waiter', telegramUserId: '123' })
+		const second = await service.create({ userId: 'user-1', businessId: 'business-1', role: 'waiter', telegramUserId: '123' })
+
+		await service.revokeAllForUser('user-1')
+
+		expect(await service.assertActive(first.sessionId)).toBe(false)
+		expect(await service.assertActive(second.sessionId)).toBe(false)
 	})
 })

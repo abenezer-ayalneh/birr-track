@@ -37,6 +37,9 @@ type BotText = {
 	failedCreateInvite: string
 	inviteRedeemed: string
 	inviterNotify: string
+	removedFromBusiness: string
+	memberLeftBusiness: string
+	waiterRemovedByManager: string
 	submitReceiptPrompt: string
 	unknownPhotoUser: string
 	suspendedBusiness: string
@@ -96,6 +99,9 @@ const en: BotText = {
 	failedCreateInvite: 'Failed to create Invite',
 	inviteRedeemed: "Welcome to Birr Track! You've been added to {businessId} as a {role}. Open the Mini App to get started.",
 	inviterNotify: '{displayName} (@{username}) has accepted your Invite and joined as a {role}.',
+	removedFromBusiness: 'You were removed from {businessName} by {actorName}. {reason} You can accept a new Invite to rejoin.',
+	memberLeftBusiness: '{displayName} has left {businessName}.',
+	waiterRemovedByManager: '{memberName} was removed from {businessName} by {actorName}. {reason}',
 	submitReceiptPrompt: 'Attach or take a Receipt photo and send it here.',
 	unknownPhotoUser: "You're not registered. Send /register to create a Business, or ask your Manager for an Invite.",
 	suspendedBusiness: 'Your Business is temporarily suspended. Please contact support.',
@@ -208,6 +214,9 @@ const am: BotText = {
 	failedCreateInvite: 'ግብዣ መፍጠር አልተቻለም',
 	inviteRedeemed: 'እንኳን ወደ Birr Track በደህና መጡ! {businessName} ወደሚባለው ቢዝነስ እንደ {role} ሆነው ተጨምረዋል። ለመጀመር "Open App" ሚለውን ይንኩት።',
 	inviterNotify: '{displayName} (@{username}) ግብዣዎን ተቀብሎ/ተቀብላ እንደ {role} ተቀላቅሏል/ተቀላቅላለች።',
+	removedFromBusiness: 'ከ{businessName} ቢዝነስ በ{actorName} ተወግደዋል። {reason} እንደገና ለመቀላቀል አዲስ Invite ያስፈልግዎታል።',
+	memberLeftBusiness: '{displayName} ከ{businessName} ቢዝነስ ወጥተዋል።',
+	waiterRemovedByManager: '{memberName} ከ{businessName} ቢዝነስ በ{actorName} ተወግደዋል። {reason}',
 	submitReceiptPrompt: 'የደረሰኝ ፎቶ እዚህ ይላኩ።',
 	unknownPhotoUser: 'አልተመዘገቡም። ቢዝነስዎን ለማስመዝገብ /register በለው ይላኩ ወይም ከማናጀሮ ግብዣ ይጠይቁ።',
 	suspendedBusiness: 'ቢዝነስዎ ለጊዜው ታግዷል። እባክዎ /support ብለው በመላክ ምክንያቱን መጠየቅ ይችላሉ።',

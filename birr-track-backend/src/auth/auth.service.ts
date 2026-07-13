@@ -168,6 +168,11 @@ export class AuthService {
 			telegramUserId: validated.telegramUserId,
 		}
 		const session = await this.adminPanelSessions.create(sessionPayload)
+		const currentUser = await this.usersService.findById(user.id)
+		if (!currentUser || currentUser.businessId !== user.businessId || currentUser.role !== user.role) {
+			await this.adminPanelSessions.revoke(session.sessionId)
+			throw new UnauthorizedException('User membership changed while creating session')
+		}
 		const payload = this.createTokenPayload(sessionPayload, session.sessionId)
 
 		const response: AuthResponseDto = {
@@ -191,6 +196,17 @@ export class AuthService {
 	async refreshAdminPanelSession(dto: RefreshAuthDto): Promise<{ payload: JwtPayload; response: AuthResponseDto }> {
 		const renewed = await this.adminPanelSessions.renew(dto.sessionId, dto.refreshToken)
 		const sessionPayload = renewed.record.payload
+		if (sessionPayload.role !== 'platform_owner') {
+			if (!sessionPayload.userId) {
+				await this.adminPanelSessions.revoke(dto.sessionId)
+				throw new UnauthorizedException('User is no longer an active business member')
+			}
+			const user = await this.usersService.findById(sessionPayload.userId)
+			if (!user || user.businessId !== sessionPayload.businessId || user.role !== sessionPayload.role) {
+				await this.adminPanelSessions.revoke(dto.sessionId)
+				throw new UnauthorizedException('User membership or role has changed')
+			}
+		}
 		const payload = this.createTokenPayload(sessionPayload, renewed.record.sessionId)
 
 		const response: AuthResponseDto = {

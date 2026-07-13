@@ -1,5 +1,6 @@
 import type { ApiClient } from '../client'
 import type {
+	AccountMembership,
   BusinessListing,
   BusinessStatus,
   Invite,
@@ -66,6 +67,13 @@ interface WireStaffMember {
   role: StaffRole
   removedAt: string | null
   createdAt?: string
+}
+
+interface WireAccountMembership {
+  userId: string
+  displayName: string
+  role: StaffRole
+  business: { id: string; name: string; status: BusinessStatus }
 }
 
 interface WireInvite {
@@ -240,6 +248,15 @@ export class HttpApiClient implements ApiClient {
     return res.language
   }
 
+  async getAccount(): Promise<AccountMembership> {
+    return this.fetcher.request<WireAccountMembership>('/account')
+  }
+
+  async leaveBusiness(): Promise<void> {
+    await this.fetcher.request<void>('/account/membership', { method: 'DELETE', responseType: 'void' })
+    this.session.clear()
+  }
+
   async listTransactions(params?: TransactionFilters & PageParams): Promise<Page<Transaction>> {
     const page = await this.fetcher.request<WirePage>('/transactions', {
       query: toTransactionQuery(params, this.waiterTelegramIds),
@@ -360,8 +377,12 @@ export class HttpApiClient implements ApiClient {
     return toStaffMember(w)
   }
 
-  async removeStaff(userId: string): Promise<void> {
-    await this.fetcher.request<void>(`/staff/${userId}`, { method: 'DELETE', responseType: 'void' })
+  async removeStaff(userId: string, reason?: string): Promise<void> {
+    await this.fetcher.request<void>(`/staff/${userId}`, {
+      method: 'DELETE',
+      body: reason?.trim() ? { reason: reason.trim() } : undefined,
+      responseType: 'void',
+    })
   }
 
   async listInvites(): Promise<Invite[]> {
