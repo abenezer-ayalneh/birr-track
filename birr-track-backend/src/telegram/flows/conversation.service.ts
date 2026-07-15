@@ -439,7 +439,11 @@ export class ConversationService implements OnModuleInit {
 
 	private getMainMenu(ctx: IdentifiedContext) {
 		const t = botText(this.getLanguage(ctx))
-		return Markup.keyboard([[Markup.button.text(t.submitReceipt), Markup.button.text(t.inviteCommand)]]).resize()
+		const buttons = [Markup.button.text(t.submitReceipt)]
+		if (this.getInvitableRoles(ctx.state.user?.role).length > 0) {
+			buttons.push(Markup.button.text(t.inviteCommand))
+		}
+		return Markup.keyboard([buttons]).resize()
 	}
 
 	private getRegisterOrInviteKeyboard(ctx: IdentifiedContext) {

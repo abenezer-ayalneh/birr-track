@@ -111,6 +111,12 @@ describe('ConversationService', () => {
 		return options?.reply_markup?.inline_keyboard
 	}
 
+	function getReplyKeyboard(reply: jest.Mock): unknown {
+		const calls = reply.mock.calls as unknown[][]
+		const options = calls[0]?.[1] as { reply_markup?: { keyboard?: unknown } } | undefined
+		return options?.reply_markup?.keyboard
+	}
+
 	it('should be defined', () => {
 		expect(service).toBeDefined()
 	})
@@ -163,7 +169,20 @@ describe('ConversationService', () => {
 				{ scope: { type: 'chat', chat_id: 777 }, language_code: undefined },
 			)
 			expect(reply).toHaveBeenCalledWith('Welcome back to Cafe Addis! Use the menu below or send /help for options.', expect.anything())
+			expect(getReplyKeyboard(reply)).toEqual([[expect.objectContaining({ text: '📸 Submit Receipt' }), expect.objectContaining({ text: '/invite' })]])
 			expect(reply).not.toHaveBeenCalledWith('What role would you like to invite?', expect.anything())
+		})
+
+		it('omits the Invite button from a Waiter main menu', async () => {
+			const { ctx, reply } = buildStart({
+				user: { id: 'user-1', role: 'waiter', businessId: 'business-1', language: 'en' } as never,
+				business: { id: 'business-1', name: 'Cafe Addis' } as never,
+				isActiveMember: true,
+			})
+
+			await service.handleStart(ctx)
+
+			expect(getReplyKeyboard(reply)).toEqual([[expect.objectContaining({ text: '📸 Submit Receipt' })]])
 		})
 
 		it('starts the Waiter Invite flow for a Manager deep link', async () => {
