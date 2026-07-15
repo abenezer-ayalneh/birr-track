@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { LessThanOrEqual, Repository } from 'typeorm'
@@ -8,6 +8,7 @@ import { UsersService } from '../users/users.service'
 import { Invite, InviteRole } from './entities/invite.entity'
 
 export const DEFAULT_INVITE_TTL_DAYS = 7
+export const MAX_INVITE_BATCH_SIZE = 10
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 
 export type CreateInviteParams = {
@@ -16,6 +17,15 @@ export type CreateInviteParams = {
 	role: InviteRole
 	createdByUserId: string
 }
+
+export type CreateInviteBatchParams = Omit<CreateInviteParams, 'inviteeTelegramId'> & {
+	inviteeTelegramIds: string[]
+}
+
+export type InviteBatchOutcome =
+	| { inviteeTelegramId: string; status: 'created'; invite: Invite }
+	| { inviteeTelegramId: string; status: 'skipped_active_member' }
+	| { inviteeTelegramId: string; status: 'failed' }
 
 export type RedeemedInvite = {
 	invite: Invite
@@ -57,6 +67,36 @@ export class InvitesService {
 		const saved = await this.inviteRepository.save(invite)
 		this.logger.log(`Invite ${saved.id} created for telegram user ${params.inviteeTelegramId} (${params.role})`)
 		return saved
+	}
+
+	/**
+	 * Creates independent Invites for a picker selection. Membership conflicts and unexpected
+	 * persistence errors apply only to the affected Telegram account so a valid batch can proceed.
+	 */
+	async createBatch(params: CreateInviteBatchParams): Promise<InviteBatchOutcome[]> {
+		const inviteeTelegramIds = [...new Set(params.inviteeTelegramIds.map((id) => id.trim()).filter(Boolean))]
+		if (inviteeTelegramIds.length === 0 || inviteeTelegramIds.length > MAX_INVITE_BATCH_SIZE) {
+			throw new BadRequestException(`Invite batches must contain between 1 and ${MAX_INVITE_BATCH_SIZE} Telegram accounts`)
+		}
+
+		const outcomes: InviteBatchOutcome[] = []
+		for (const inviteeTelegramId of inviteeTelegramIds) {
+			try {
+				const invite = await this.create({ ...params, inviteeTelegramId })
+				outcomes.push({ inviteeTelegramId, status: 'created', invite })
+			} catch (err) {
+				if (err instanceof ConflictException) {
+					outcomes.push({ inviteeTelegramId, status: 'skipped_active_member' })
+					continue
+				}
+
+				outcomes.push({ inviteeTelegramId, status: 'failed' })
+				const reason = err instanceof Error ? err.message : 'Unknown error'
+				this.logger.error(`Failed to create invite for telegram user ${inviteeTelegramId}: ${reason}`)
+			}
+		}
+
+		return outcomes
 	}
 
 	/**

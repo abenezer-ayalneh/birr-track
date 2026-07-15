@@ -1,12 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { SharedUser, UsersShared } from '@telegraf/types'
 import { Action, Command, Ctx, InjectBot, Next, On, Start, Update } from 'nestjs-telegraf'
 import { Markup, Telegraf } from 'telegraf'
 import { BotCommand, Message, User as TelegramUser } from 'telegraf/types'
 
 import { BusinessesService } from '../../businesses/businesses.service'
 import { Business } from '../../businesses/entities/business.entity'
-import { InvitesService } from '../../invites/invites.service'
+import { InviteBatchOutcome, InvitesService, MAX_INVITE_BATCH_SIZE } from '../../invites/invites.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { SupportedLanguage } from '../../users/entities/user.entity'
 import { UsersService } from '../../users/users.service'
@@ -19,6 +20,13 @@ interface ConversationSession extends Record<string, unknown> {
 	inviting?: boolean
 	inviteRole?: 'waiter' | 'manager'
 	language?: SupportedLanguage
+}
+
+type SelectedTelegramUser = Pick<SharedUser, 'user_id' | 'first_name' | 'last_name'>
+
+type UserPickerMessage = {
+	users_shared?: UsersShared
+	user_shared?: { user_id: number }
 }
 
 @Injectable()
@@ -233,7 +241,8 @@ export class ConversationService implements OnModuleInit {
 		ctx.session = session
 
 		const t = botText(this.getLanguage(ctx))
-		const keyboard = Markup.keyboard([[Markup.button.userRequest(t.selectStaffMember, 1)]])
+		const userRequest = { max_quantity: MAX_INVITE_BATCH_SIZE, request_name: true }
+		const keyboard = Markup.keyboard([[Markup.button.userRequest(t.selectStaffMember, 1, userRequest)]])
 			.resize(true)
 			.oneTime(true)
 
@@ -292,14 +301,12 @@ export class ConversationService implements OnModuleInit {
 	async handleUserShared(@Ctx() ctx: IdentifiedContext, @Next() next?: () => Promise<void>): Promise<void> {
 		await this.refreshChatCommands(ctx)
 
-		const message = ctx.message as unknown
-		const typedMsg = message as { user_shared?: { user_id: number } }
-		if (!typedMsg?.user_shared) {
+		const selectedUsers = this.getSelectedUsers(ctx.message as unknown)
+		if (selectedUsers.length === 0) {
 			await next?.()
 			return
 		}
 
-		const selectedUserId = String(typedMsg.user_shared.user_id)
 		const session = this.getSession(ctx)
 		if (!session.inviting || !session.inviteRole) {
 			await next?.()
@@ -322,27 +329,75 @@ export class ConversationService implements OnModuleInit {
 		}
 
 		try {
-			const invite = await this.invitesService.create({
-				inviteeTelegramId: selectedUserId,
+			const outcomes = await this.invitesService.createBatch({
+				inviteeTelegramIds: selectedUsers.map((user) => String(user.user_id)),
 				businessId: ctx.state.user.businessId,
 				role,
 				createdByUserId: ctx.state.user.id,
 			})
 
-			session.inviting = false
-			session.inviteRole = undefined
-			ctx.session = session
+			this.clearInviteSession(ctx)
 
 			const t = botText(this.getLanguage(ctx))
-			const confirmMsg = formatBotText(t.inviteSent, { role })
+			const confirmMsg = this.formatInviteBatchResult(t, role, selectedUsers, outcomes)
 			await ctx.reply(confirmMsg, Markup.removeKeyboard())
 
-			this.logger.log(`Invite ${invite.id} created by ${ctx.state.user.id} for user ${selectedUserId} (${role})`)
+			this.logger.log(
+				`Invite batch processed by ${ctx.state.user.id}: ${outcomes.filter((outcome) => outcome.status === 'created').length} created, ${outcomes.length} selected (${role})`,
+			)
 		} catch (err) {
-			const errorMsg = err instanceof Error ? err.message : botText(this.getLanguage(ctx)).failedCreateInvite
-			await ctx.reply(`Error: ${errorMsg}`, Markup.removeKeyboard())
-			this.logger.error(`Failed to create invite: ${describeError(err)}`)
+			this.clearInviteSession(ctx)
+			await ctx.reply(botText(this.getLanguage(ctx)).failedCreateInvite, Markup.removeKeyboard())
+			this.logger.error(`Failed to create invite batch: ${describeError(err)}`)
 		}
+	}
+
+	private getSelectedUsers(message: unknown): SelectedTelegramUser[] {
+		const typedMessage = message as UserPickerMessage
+		if (typedMessage.users_shared?.users) {
+			return typedMessage.users_shared.users
+		}
+		if (typedMessage.user_shared) {
+			return [typedMessage.user_shared]
+		}
+		return []
+	}
+
+	private formatInviteBatchResult(
+		t: ReturnType<typeof botText>,
+		role: 'waiter' | 'manager',
+		selectedUsers: SelectedTelegramUser[],
+		outcomes: InviteBatchOutcome[],
+	): string {
+		const namesByTelegramId = new Map(selectedUsers.map((user) => [String(user.user_id), this.formatSelectedUserName(user)]))
+		const formatNames = (status: InviteBatchOutcome['status']) =>
+			outcomes
+				.filter((outcome) => outcome.status === status)
+				.map((outcome) => namesByTelegramId.get(outcome.inviteeTelegramId) ?? `Telegram #${outcome.inviteeTelegramId}`)
+				.join(', ')
+
+		const lines: string[] = []
+		const createdNames = formatNames('created')
+		if (createdNames) {
+			lines.push(formatBotText(t.inviteSent, { count: outcomes.filter((outcome) => outcome.status === 'created').length, names: createdNames, role }))
+		}
+		const skippedNames = formatNames('skipped_active_member')
+		if (skippedNames) {
+			lines.push(
+				formatBotText(t.inviteSkipped, { count: outcomes.filter((outcome) => outcome.status === 'skipped_active_member').length, names: skippedNames }),
+			)
+		}
+		const failedNames = formatNames('failed')
+		if (failedNames) {
+			lines.push(formatBotText(t.inviteBatchFailed, { count: outcomes.filter((outcome) => outcome.status === 'failed').length, names: failedNames }))
+		}
+
+		return lines.join('\n') || t.failedCreateInvite
+	}
+
+	private formatSelectedUserName(user: SelectedTelegramUser): string {
+		const name = [user.first_name, user.last_name].filter((part): part is string => Boolean(part?.trim())).join(' ')
+		return name || `Telegram #${user.user_id}`
 	}
 
 	private getInvitableRoles(role: string | undefined): Array<'waiter' | 'manager'> {

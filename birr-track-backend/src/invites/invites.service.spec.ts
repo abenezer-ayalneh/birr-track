@@ -8,7 +8,7 @@ import { Repository } from 'typeorm'
 import { User } from '../users/entities/user.entity'
 import { UsersService } from '../users/users.service'
 import { Invite } from './entities/invite.entity'
-import { InvitesService } from './invites.service'
+import { InvitesService, MAX_INVITE_BATCH_SIZE } from './invites.service'
 
 describe('InvitesService', () => {
 	let service: InvitesService
@@ -141,6 +141,49 @@ describe('InvitesService', () => {
 
 			const createdInvite = (inviteRepository.create as jest.Mock).mock.calls[0][0] as { expiresAt: Date }
 			expect(createdInvite.expiresAt.getTime()).toBeGreaterThan(Date.now() + 13 * 24 * 60 * 60 * 1000)
+		})
+	})
+
+	describe('createBatch', () => {
+		it('creates eligible Invites while continuing past active members and unexpected failures', async () => {
+			jest.spyOn(service, 'create')
+				.mockResolvedValueOnce(mockInvite)
+				.mockRejectedValueOnce(new ConflictException('already belongs to a business'))
+				.mockRejectedValueOnce(new Error('database unavailable'))
+			const outcomes = await service.createBatch({
+				inviteeTelegramIds: ['111', '222', '333'],
+				businessId: 'business-1',
+				role: 'waiter',
+				createdByUserId: 'user-1',
+			})
+
+			expect(outcomes).toEqual([
+				expect.objectContaining({ inviteeTelegramId: '111', status: 'created' }),
+				{ inviteeTelegramId: '222', status: 'skipped_active_member' },
+				{ inviteeTelegramId: '333', status: 'failed' },
+			])
+			expect(service.create).toHaveBeenCalledTimes(3)
+		})
+
+		it('deduplicates selected users and rejects batches outside Telegram limits', async () => {
+			jest.spyOn(service, 'create').mockResolvedValue(mockInvite)
+
+			await service.createBatch({
+				inviteeTelegramIds: ['111', '111', '222'],
+				businessId: 'business-1',
+				role: 'waiter',
+				createdByUserId: 'user-1',
+			})
+
+			expect(service.create).toHaveBeenCalledTimes(2)
+			await expect(
+				service.createBatch({
+					inviteeTelegramIds: Array.from({ length: MAX_INVITE_BATCH_SIZE + 1 }, (_, index) => String(index)),
+					businessId: 'business-1',
+					role: 'waiter',
+					createdByUserId: 'user-1',
+				}),
+			).rejects.toThrow(`between 1 and ${MAX_INVITE_BATCH_SIZE}`)
 		})
 	})
 

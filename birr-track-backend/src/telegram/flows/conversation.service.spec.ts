@@ -63,6 +63,7 @@ describe('ConversationService', () => {
 					provide: InvitesService,
 					useValue: {
 						create: jest.fn(),
+						createBatch: jest.fn(),
 						redeem: jest.fn(),
 					},
 				},
@@ -305,7 +306,7 @@ describe('ConversationService', () => {
 
 			await service.handleInviteRoleCallbackQuery(ctx)
 
-			expect(invitesService.create).not.toHaveBeenCalled()
+			expect(invitesService.createBatch).not.toHaveBeenCalled()
 			expect(answerCbQuery).toHaveBeenCalled()
 			expect(reply).toHaveBeenCalledWith('Only the Owner can invite Managers.', expect.anything())
 			expect(ctx.session).toMatchObject({ inviting: false, inviteRole: undefined })
@@ -330,7 +331,9 @@ describe('ConversationService', () => {
 			await service.handleInviteRoleCallbackQuery(ctx)
 
 			expect(ctx.session).toMatchObject({ inviting: true, inviteRole: 'manager' })
-			expect(reply).toHaveBeenCalledWith(expect.stringContaining('invite as a manager'), expect.anything())
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('as manager'), expect.anything())
+			const keyboard = getReplyKeyboard(reply) as { request_users?: { max_quantity?: number; request_name?: boolean } }[][]
+			expect(keyboard[0]?.[0]?.request_users).toMatchObject({ max_quantity: 10, request_name: true })
 		})
 	})
 
@@ -437,14 +440,14 @@ describe('ConversationService', () => {
 
 			await service.handleUserShared(ctx, next)
 
-			expect(invitesService.create).not.toHaveBeenCalled()
+			expect(invitesService.createBatch).not.toHaveBeenCalled()
 			expect(next).toHaveBeenCalledTimes(1)
 		})
 
 		it('rechecks the role before creating an Invite', async () => {
 			const reply = jest.fn().mockResolvedValue(undefined)
-			const createInvite = invitesService.create as jest.Mock
-			createInvite.mockResolvedValue({ id: 'invite-1' })
+			const createInviteBatch = invitesService.createBatch as jest.Mock
+			createInviteBatch.mockResolvedValue([])
 			const ctx = {
 				message: { user_shared: { user_id: 9876 } },
 				state: {
@@ -459,14 +462,14 @@ describe('ConversationService', () => {
 
 			await service.handleUserShared(ctx)
 
-			expect(createInvite).not.toHaveBeenCalled()
+			expect(createInviteBatch).not.toHaveBeenCalled()
 			expect(reply).toHaveBeenCalledWith('Only the Owner can invite Managers.', expect.anything())
 		})
 
 		it('creates a Waiter Invite for a Manager in an active flow', async () => {
 			const reply = jest.fn().mockResolvedValue(undefined)
-			const createInvite = invitesService.create as jest.Mock
-			createInvite.mockResolvedValue({ id: 'invite-1' })
+			const createInviteBatch = invitesService.createBatch as jest.Mock
+			createInviteBatch.mockResolvedValue([{ inviteeTelegramId: '9876', status: 'created', invite: { id: 'invite-1' } }])
 			const ctx = {
 				message: { user_shared: { user_id: 9876 } },
 				state: {
@@ -481,12 +484,55 @@ describe('ConversationService', () => {
 
 			await service.handleUserShared(ctx)
 
-			expect(createInvite).toHaveBeenCalledWith({
-				inviteeTelegramId: '9876',
+			expect(createInviteBatch).toHaveBeenCalledWith({
+				inviteeTelegramIds: ['9876'],
 				businessId: 'business-1',
 				role: 'waiter',
 				createdByUserId: 'user-1',
 			})
+			expect(ctx.session).toMatchObject({ inviting: false, inviteRole: undefined })
+		})
+
+		it('creates and reports a named multi-user batch with partial results', async () => {
+			const reply = jest.fn().mockResolvedValue(undefined)
+			const createInviteBatch = invitesService.createBatch as jest.Mock
+			createInviteBatch.mockResolvedValue([
+				{ inviteeTelegramId: '9876', status: 'created', invite: { id: 'invite-1' } },
+				{ inviteeTelegramId: '9877', status: 'skipped_active_member' },
+				{ inviteeTelegramId: '9878', status: 'failed' },
+			])
+			const ctx = {
+				message: {
+					users_shared: {
+						request_id: 1,
+						users: [
+							{ user_id: 9876, first_name: 'Abebe', last_name: 'Kebede' },
+							{ user_id: 9877, first_name: 'Almaz' },
+							{ user_id: 9878, first_name: 'Hana' },
+						],
+					},
+				},
+				state: {
+					user: { id: 'user-1', role: 'owner', businessId: 'business-1', language: 'en' },
+					business: { id: 'business-1', name: 'Cafe Addis' },
+					isPlatformOwner: false,
+					isActiveMember: true,
+				},
+				session: { inviting: true, inviteRole: 'manager' },
+				reply,
+			} as unknown as IdentifiedContext
+
+			await service.handleUserShared(ctx)
+
+			expect(createInviteBatch).toHaveBeenCalledWith({
+				inviteeTelegramIds: ['9876', '9877', '9878'],
+				businessId: 'business-1',
+				role: 'manager',
+				createdByUserId: 'user-1',
+			})
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('Abebe Kebede'), expect.anything())
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('Almaz'), expect.anything())
+			expect(reply).toHaveBeenCalledWith(expect.stringContaining('Hana'), expect.anything())
 			expect(ctx.session).toMatchObject({ inviting: false, inviteRole: undefined })
 		})
 	})

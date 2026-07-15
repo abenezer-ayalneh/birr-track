@@ -35,6 +35,8 @@ type BotText = {
 	inviteSelectPrompt: string
 	notRegistered: string
 	inviteSent: string
+	inviteSkipped: string
+	inviteBatchFailed: string
 	failedCreateInvite: string
 	inviteRedeemed: string
 	inviterNotify: string
@@ -94,10 +96,12 @@ const en: BotText = {
 	chooseInviteRole: 'What role would you like to invite?',
 	waiter: 'Waiter',
 	manager: 'Manager',
-	selectStaffMember: 'Select staff member',
-	inviteSelectPrompt: 'Now select the staff member to invite as a {role}:',
+	selectStaffMember: 'Select staff members',
+	inviteSelectPrompt: 'Now select up to 10 staff members to invite as {role}:',
 	notRegistered: 'You are not registered.',
-	inviteSent: 'Invite sent! The staff member will be added as a {role} when they start the bot.',
+	inviteSent: 'Invites created for {count} {role}: {names}. They will be added when they start the bot.',
+	inviteSkipped: 'Skipped {count} existing Business member(s): {names}.',
+	inviteBatchFailed: 'Could not create Invites for {count} person(s): {names}. Please try again.',
 	failedCreateInvite: 'Failed to create Invite',
 	inviteRedeemed: "Welcome to Birr Track! You've been added to {businessName} as a {role}. Open the Mini App to get started.",
 	inviterNotify: '{displayName} (@{username}) has accepted your Invite and joined as a {role}.',
@@ -210,10 +214,12 @@ const am: BotText = {
 	chooseInviteRole: 'ምን ሚና መጋበዝ ይፈልጋሉ?',
 	waiter: 'አስተናጋጅ',
 	manager: 'ማናጀር',
-	selectStaffMember: 'ሰራተኛ ይምረጡ',
-	inviteSelectPrompt: 'አሁን እንደ {role} የሚጋበዘውን ሰራተኛ ይምረጡ።',
+	selectStaffMember: 'ሰራተኞችን ይምረጡ',
+	inviteSelectPrompt: 'አሁን እንደ {role} ሆነው የሚጋበዙ እስከ 10 ሰራተኞችን ይምረጡ።',
 	notRegistered: 'አልተመዘገቡም።',
-	inviteSent: 'ግብዣው ተልኳል! የተላከላቸው ሰው ይህን bot ሲያስጀምሩት እንደ {role} ሆነው የገባሉ።',
+	inviteSent: 'ለ{count} {role} ግብዣ ተፈጥሯል፦ {names}። bot ሲያስጀምሩ ይቀላቀላሉ።',
+	inviteSkipped: 'ቀድሞ የቢዝነስ አባል የሆኑ {count} ሰዎች ተዘለዋል፦ {names}።',
+	inviteBatchFailed: 'ለ{count} ሰዎች ግብዣ መፍጠር አልተቻለም፦ {names}። እባክዎ ደግመው ይሞክሩ።',
 	failedCreateInvite: 'ግብዣ መፍጠር አልተቻለም',
 	inviteRedeemed: 'እንኳን ወደ Birr Track በደህና መጡ! {businessName} ወደሚባለው ቢዝነስ እንደ {role} ሆነው ተጨምረዋል። ለመጀመር "Open App" ሚለውን ይንኩት።',
 	inviterNotify: '{displayName} (@{username}) ግብዣዎን ተቀብሎ/ተቀብላ እንደ {role} ተቀላቅሏል/ተቀላቅላለች።',
