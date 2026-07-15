@@ -27,6 +27,7 @@ type BotText = {
 	askBusinessName: string
 	businessNameEmpty: string
 	onlyManagersInvite: string
+	onlyOwnerInviteManager: string
 	chooseInviteRole: string
 	waiter: string
 	manager: string
@@ -89,6 +90,7 @@ const en: BotText = {
 	askBusinessName: 'What is your Business name?',
 	businessNameEmpty: 'Business name cannot be empty. Please try again.',
 	onlyManagersInvite: 'Only Managers and Owners can invite Waiters.',
+	onlyOwnerInviteManager: 'Only the Owner can invite Managers.',
 	chooseInviteRole: 'What role would you like to invite?',
 	waiter: 'Waiter',
 	manager: 'Manager',
@@ -204,6 +206,7 @@ const am: BotText = {
 	askBusinessName: 'የቢዝነስዎ ስም ምንድነው?',
 	businessNameEmpty: 'የቢዝነስዎ ስም ባዶ መሆን አይችልም። እባክዎ ደግመው ይሞክሩ።',
 	onlyManagersInvite: 'አስተናጋጆች መጋበዝ የሚችሉት ማናጀር እና የቢዝነሱ ባለቤት ብቻ ናቸው።',
+	onlyOwnerInviteManager: 'ማናጀሮችን መጋበዝ የሚችለው የቢዝነሱ ባለቤት ብቻ ነው።',
 	chooseInviteRole: 'ምን ሚና መጋበዝ ይፈልጋሉ?',
 	waiter: 'አስተናጋጅ',
 	manager: 'ማናጀር',

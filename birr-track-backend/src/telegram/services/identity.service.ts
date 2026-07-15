@@ -6,6 +6,7 @@ import { User } from '../../users/entities/user.entity'
 import { UsersService } from '../../users/users.service'
 
 export interface IdentifiedContext extends Context {
+	payload?: string
 	state: Context['state'] & {
 		user: User | null
 		business: Business | null

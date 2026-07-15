@@ -45,7 +45,7 @@ A tenant (e.g., a restaurant) with its own Waiters, Managers, and Transactions. 
 _Avoid_: tenant, organization, restaurant
 
 **Invite**:
-A Manager's grant letting one specific Telegram account join their Business in a chosen role (Waiter or Manager). Bound to the invitee's Telegram ID at creation via Telegram's native user picker; redeemed automatically when that person starts the bot.
+A Manager's grant letting one specific Telegram account join their Business as a Waiter. An Owner may grant either Waiter or Manager membership. Bound to the invitee's Telegram ID at creation via Telegram's native user picker; redeemed automatically when that person starts the bot.
 _Avoid_: invite code, join link
 
 ### Receipts & Money

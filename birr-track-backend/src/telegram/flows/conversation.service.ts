@@ -73,6 +73,11 @@ export class ConversationService implements OnModuleInit {
 		}
 		const t = botText(this.getLanguage(ctx))
 
+		if (ctx.payload === 'invite') {
+			await this.beginInviteFlow(ctx)
+			return
+		}
+
 		if (ctx.state.user) {
 			const greeting = formatBotText(t.welcomeRegistered, { businessName: ctx.state.business?.name || 'your business' })
 			await ctx.reply(greeting, this.getMainMenu(ctx))
@@ -155,8 +160,11 @@ export class ConversationService implements OnModuleInit {
 			return
 		}
 		await this.refreshChatCommands(ctx)
+		await this.beginInviteFlow(ctx)
+	}
 
-		if (!ctx.state.user || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
+	private async beginInviteFlow(ctx: IdentifiedContext): Promise<void> {
+		if (!ctx.state.user || !ctx.state.isActiveMember || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
 			await ctx.reply(botText(this.getLanguage(ctx)).onlyManagersInvite)
 			return
 		}
@@ -165,7 +173,7 @@ export class ConversationService implements OnModuleInit {
 		session.inviting = true
 		ctx.session = session
 
-		const roleButtons = INVITE_ROLE_BUTTONS[ctx.state.user.role as 'manager' | 'owner']
+		const roleButtons = this.getInvitableRoles(ctx.state.user.role)
 		const t = botText(this.getLanguage(ctx))
 		const keyboard = Markup.inlineKeyboard(
 			roleButtons.map((role) => [Markup.button.callback(role === 'waiter' ? t.waiter : t.manager, `invite_role_${role}`)]),
@@ -211,6 +219,14 @@ export class ConversationService implements OnModuleInit {
 		}
 
 		const role = match[1] as 'waiter' | 'manager'
+		if (!this.canInviteRole(ctx.state.user?.role, role) || !ctx.state.isActiveMember) {
+			this.clearInviteSession(ctx)
+			await ctx.answerCbQuery()
+			const t = botText(this.getLanguage(ctx))
+			await ctx.reply(role === 'manager' ? t.onlyOwnerInviteManager : t.onlyManagersInvite, Markup.removeKeyboard())
+			return
+		}
+
 		const session = (ctx.session || {}) as ConversationSession
 		session.inviteRole = role
 		session.inviting = true
@@ -284,11 +300,24 @@ export class ConversationService implements OnModuleInit {
 		}
 
 		const selectedUserId = String(typedMsg.user_shared.user_id)
-		const session = (ctx.session || {}) as ConversationSession
-		const role = session?.inviteRole || 'waiter'
+		const session = this.getSession(ctx)
+		if (!session.inviting || !session.inviteRole) {
+			await next?.()
+			return
+		}
 
-		if (!ctx.state.user) {
+		const role = session.inviteRole
+
+		if (!ctx.state.user || !ctx.state.isActiveMember) {
+			this.clearInviteSession(ctx)
 			await ctx.reply(botText(this.getLanguage(ctx)).notRegistered)
+			return
+		}
+
+		if (!this.canInviteRole(ctx.state.user.role, role)) {
+			this.clearInviteSession(ctx)
+			const t = botText(this.getLanguage(ctx))
+			await ctx.reply(role === 'manager' ? t.onlyOwnerInviteManager : t.onlyManagersInvite, Markup.removeKeyboard())
 			return
 		}
 
@@ -314,6 +343,24 @@ export class ConversationService implements OnModuleInit {
 			await ctx.reply(`Error: ${errorMsg}`, Markup.removeKeyboard())
 			this.logger.error(`Failed to create invite: ${describeError(err)}`)
 		}
+	}
+
+	private getInvitableRoles(role: string | undefined): Array<'waiter' | 'manager'> {
+		if (role !== 'manager' && role !== 'owner') {
+			return []
+		}
+		return INVITE_ROLE_BUTTONS[role]
+	}
+
+	private canInviteRole(actorRole: string | undefined, inviteRole: 'waiter' | 'manager'): boolean {
+		return this.getInvitableRoles(actorRole).includes(inviteRole)
+	}
+
+	private clearInviteSession(ctx: IdentifiedContext): void {
+		const session = this.getSession(ctx)
+		session.inviting = false
+		session.inviteRole = undefined
+		ctx.session = session
 	}
 
 	private async configureBotProfile(): Promise<void> {
@@ -419,10 +466,7 @@ export class ConversationService implements OnModuleInit {
 
 	private async askLanguage(ctx: IdentifiedContext): Promise<void> {
 		const keyboard = Markup.inlineKeyboard([
-			[
-				Markup.button.callback(LANGUAGE_LABELS.en, 'language_en'),
-				Markup.button.callback(LANGUAGE_LABELS.am, 'language_am'),
-			],
+			[Markup.button.callback(LANGUAGE_LABELS.en, 'language_en'), Markup.button.callback(LANGUAGE_LABELS.am, 'language_am')],
 		])
 		await ctx.reply(botText(this.getLanguage(ctx)).languagePrompt, keyboard)
 	}

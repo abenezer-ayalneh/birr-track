@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { type MouseEvent, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Invite, StaffMember } from '../api/types'
 import { PageHeader } from '../components/PageHeader'
@@ -7,6 +7,7 @@ import { useApi } from '../lib/useApi'
 import { useRole } from '../lib/useRole'
 import { formatDate } from '../lib/format'
 import { usePageRefresh } from '../lib/useRefresh'
+import { closeTelegramMiniApp, tryOpenTelegramLink } from '../lib/telegram'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import '../styles/admin.css'
@@ -65,7 +66,15 @@ export function Staff() {
   }
 
   function inviteHref(): string | undefined {
-    return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}` : undefined
+    return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=invite` : undefined
+  }
+
+  function handleInviteClick(event: MouseEvent<HTMLAnchorElement>): void {
+    const href = inviteHref()
+    if (href && tryOpenTelegramLink(href)) {
+      event.preventDefault()
+      closeTelegramMiniApp()
+    }
   }
 
   return (
@@ -73,7 +82,14 @@ export function Staff() {
       <PageHeader title={t('staff.title')} subtitle={t('staff.subtitle')} />
 
       {inviteHref() ? (
-        <a className="invite-button" href={inviteHref()} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'center', color: '#fff' }}>
+        <a
+          className="invite-button"
+          href={inviteHref()}
+          target="_blank"
+          rel="noreferrer"
+          style={{ display: 'block', textAlign: 'center', color: '#fff' }}
+          onClick={handleInviteClick}
+        >
           ＋ {t('staff.inviteSomeone')}
         </a>
       ) : (
