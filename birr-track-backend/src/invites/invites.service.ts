@@ -64,7 +64,10 @@ export class InvitesService {
 	 * Returns null when there is nothing to redeem (no pending Invite, or it has expired).
 	 */
 	async redeem(telegramUserId: string, displayName: string): Promise<RedeemedInvite | null> {
-		const invite = await this.inviteRepository.findOne({ where: { inviteeTelegramId: telegramUserId, status: 'pending' } })
+		const invite = await this.inviteRepository.findOne({
+			where: { inviteeTelegramId: telegramUserId, status: 'pending' },
+			relations: { business: true, createdBy: true },
+		})
 		if (!invite) {
 			return null
 		}

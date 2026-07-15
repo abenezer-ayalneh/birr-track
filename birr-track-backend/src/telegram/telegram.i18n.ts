@@ -99,7 +99,7 @@ const en: BotText = {
 	notRegistered: 'You are not registered.',
 	inviteSent: 'Invite sent! The staff member will be added as a {role} when they start the bot.',
 	failedCreateInvite: 'Failed to create Invite',
-	inviteRedeemed: "Welcome to Birr Track! You've been added to {businessId} as a {role}. Open the Mini App to get started.",
+	inviteRedeemed: "Welcome to Birr Track! You've been added to {businessName} as a {role}. Open the Mini App to get started.",
 	inviterNotify: '{displayName} (@{username}) has accepted your Invite and joined as a {role}.',
 	removedFromBusiness: 'You were removed from {businessName} by {actorName}. {reason} You can accept a new Invite to rejoin.',
 	memberLeftBusiness: '{displayName} has left {businessName}.',

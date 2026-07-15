@@ -156,6 +156,10 @@ describe('InvitesService', () => {
 			const result = await service.redeem('999999999', 'New Member')
 
 			expect(result).not.toBeNull()
+			expect(inviteRepository.findOne).toHaveBeenCalledWith({
+				where: { inviteeTelegramId: '999999999', status: 'pending' },
+				relations: { business: true, createdBy: true },
+			})
 			expect(result?.invite.status).toBe('redeemed')
 			expect(result?.user).toEqual(mockUser)
 		})

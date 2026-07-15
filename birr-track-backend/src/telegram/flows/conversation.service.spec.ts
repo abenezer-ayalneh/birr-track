@@ -46,6 +46,7 @@ describe('ConversationService', () => {
 						isPlatformOwner: jest.fn(),
 						findByTelegramId: jest.fn(),
 						joinBusiness: jest.fn(),
+						updateLanguage: jest.fn(),
 						findById: jest.fn(),
 						hasRoleAtLeast: jest.fn((user: { role?: string }) => user.role === 'manager' || user.role === 'owner'),
 					},
@@ -88,6 +89,7 @@ describe('ConversationService', () => {
 			payload,
 			state: { user: null, business: null, isPlatformOwner: false, isActiveMember: false, ...state },
 			session: {},
+			telegram: { sendMessage: jest.fn().mockResolvedValue(undefined) },
 			reply,
 		} as unknown as IdentifiedContext
 		return { ctx, reply }
@@ -246,6 +248,26 @@ describe('ConversationService', () => {
 			await service.handleStart(ctx)
 
 			expect(reply).toHaveBeenCalledWith('Choose your language.', expect.anything())
+		})
+
+		it('uses the business name in the invitation welcome message', async () => {
+			const { ctx, reply } = buildStart({}, undefined)
+			ctx.session = { language: 'en' }
+			;(invitesService.redeem as jest.Mock).mockResolvedValue({
+				invite: {
+					business: { id: 'business-1', name: 'Cafe Addis' },
+					createdBy: { id: 'user-1', telegramUserId: '111' },
+				},
+				user: { id: 'user-2', businessId: 'business-1', role: 'waiter', language: 'en' },
+			})
+
+			await service.handleStart(ctx)
+
+			expect(reply).toHaveBeenCalledWith(
+				"Welcome to Birr Track! You've been added to Cafe Addis as a waiter. Open the Mini App to get started.",
+				expect.anything(),
+			)
+			expect(reply).not.toHaveBeenCalledWith(expect.stringContaining('business-1'), expect.anything())
 		})
 	})
 

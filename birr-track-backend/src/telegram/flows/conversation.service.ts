@@ -100,7 +100,7 @@ export class ConversationService implements OnModuleInit {
 				redeemed.user.language = this.getLanguage(ctx)
 				await this.usersService.updateLanguage(redeemed.user.id, redeemed.user.language)
 			}
-			const confirmMsg = formatBotText(t.inviteRedeemed, { businessId: redeemed.user.businessId, role: redeemed.user.role })
+			const confirmMsg = formatBotText(t.inviteRedeemed, { businessName: redeemed.invite.business.name, role: redeemed.user.role })
 			await ctx.reply(confirmMsg, this.getMainMenu(ctx))
 
 			const inviter = redeemed.invite.createdBy
