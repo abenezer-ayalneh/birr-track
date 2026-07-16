@@ -10,6 +10,14 @@ This is a monorepo for Birr Track, an Ethiopian receipt tracking application wit
 - **`vlm-inference/`** - FastAPI microservice for receipt extraction using Qwen2.5-VL via Ollama or fine-tuned models
 - **`qwen-vlm-training/`** - Training scripts and dataset preparation for fine-tuning Qwen2.5-VL on Ethiopian receipt data
 
+## Mini App Theming Convention
+
+The mini app must always follow the user's active device theme. `birr-track-miniapp/src/lib/theme.ts` is the single theme entry point: it maps Telegram theme parameters, responds to Telegram `themeChanged` events, and uses `prefers-color-scheme` as the browser fallback.
+
+- Use the semantic `--app-*` variables from `src/styles/globals.css` for shared surfaces, text, borders, feedback states, focus rings, and accent foregrounds. Use the `--tg-color-*` variables only when a matching Telegram semantic value is needed.
+- Do not introduce hard-coded light or dark UI colors in page/component CSS or inline styles. Literal colors belong only in the centralized fallback/theme definitions or in intentional content assets such as receipt mockups.
+- Treat every new page, component, dialog, form control, and status treatment as a light-and-dark-mode feature. Confirm its contrast, native-control appearance, and states in both themes before handing it off.
+
 ## Common Development Commands
 
 ### Backend (NestJS)

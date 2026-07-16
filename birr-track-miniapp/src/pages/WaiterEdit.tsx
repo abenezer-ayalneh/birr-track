@@ -125,7 +125,7 @@ export function WaiterEdit() {
       )}
 
       {tx.isDuplicate && (
-        <div className="edited-flag" style={{ backgroundColor: '#ffebee', color: '#b71c1c' }}>
+        <div className="edited-flag edited-flag--duplicate">
           ⚠️ {t('transactions.duplicateWarning')}
         </div>
       )}

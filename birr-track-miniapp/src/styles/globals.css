@@ -5,12 +5,69 @@
   --tg-color-hint: #999999;
   --tg-color-link: #0088cc;
   --tg-color-accent: #0088cc;
+  --tg-color-button-text: #ffffff;
   --tg-color-section-bg: #f2f2f2;
   --tg-color-section-header-text: #8a8f98;
   --tg-color-subtitle-text: #8a8f98;
   --tg-color-destructive: #ff3b30;
   --tg-unsafe-bg: #ffffff;
   --tg-unsafe-text: #000000;
+
+  --app-canvas: var(--tg-unsafe-bg);
+  --app-surface: var(--tg-color-bg);
+  --app-surface-muted: var(--tg-color-section-bg);
+  --app-text: var(--tg-unsafe-text);
+  --app-muted-text: var(--tg-color-subtitle-text);
+  --app-border: color-mix(in srgb, var(--app-text) 12%, transparent);
+  --app-shadow: color-mix(in srgb, var(--app-text) 8%, transparent);
+  --app-spinner-track: color-mix(in srgb, var(--app-text) 12%, transparent);
+  --app-focus-ring: color-mix(in srgb, var(--tg-color-accent) 20%, transparent);
+  --app-on-accent: var(--tg-color-button-text);
+  --app-success-surface: #e8f5e9;
+  --app-success-text: #1b5e20;
+  --app-warning-surface: #fff3e0;
+  --app-warning-text: #a44b00;
+  --app-danger-surface: #ffebee;
+  --app-danger-text: #b71c1c;
+  --app-info-surface: #e3f2fd;
+  --app-info-text: #0d47a1;
+  --app-owner-surface: #ede7f6;
+  --app-owner-text: #4527a0;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --app-success-surface: #153c28;
+    --app-success-text: #92e0ae;
+    --app-warning-surface: #4a3215;
+    --app-warning-text: #ffd08a;
+    --app-danger-surface: #4a2024;
+    --app-danger-text: #ffafb5;
+    --app-info-surface: #193957;
+    --app-info-text: #9dd0ff;
+    --app-owner-surface: #332452;
+    --app-owner-text: #d6baff;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --app-success-surface: #153c28;
+  --app-success-text: #92e0ae;
+  --app-warning-surface: #4a3215;
+  --app-warning-text: #ffd08a;
+  --app-danger-surface: #4a2024;
+  --app-danger-text: #ffafb5;
+  --app-info-surface: #193957;
+  --app-info-text: #9dd0ff;
+  --app-owner-surface: #332452;
+  --app-owner-text: #d6baff;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 * {
@@ -28,8 +85,8 @@ body {
 
 body {
   font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  background-color: var(--tg-unsafe-bg);
-  color: var(--tg-unsafe-text);
+  background-color: var(--app-canvas);
+  color: var(--app-text);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -49,6 +106,7 @@ button {
   background: none;
   cursor: pointer;
   font: inherit;
+  color: inherit;
 }
 
 a {
@@ -71,24 +129,24 @@ a:hover {
 }
 
 .chip--success {
-  background-color: #e8f5e9;
-  color: #1b5e20;
+  background-color: var(--app-success-surface);
+  color: var(--app-success-text);
 }
 
 .chip--warning {
-  background-color: #fff3e0;
-  color: #e65100;
+  background-color: var(--app-warning-surface);
+  color: var(--app-warning-text);
 }
 
 .chip--alert {
-  background-color: #ffebee;
-  color: #b71c1c;
+  background-color: var(--app-danger-surface);
+  color: var(--app-danger-text);
 }
 
 /* Cards */
 .card {
-  background-color: var(--tg-color-bg);
-  border: 1px solid #eeeeee;
+  background-color: var(--app-surface);
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 12px;
@@ -99,7 +157,7 @@ a:hover {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
+  border: 3px solid var(--app-spinner-track);
   border-radius: 50%;
   border-top-color: var(--tg-color-accent);
   animation: spin 0.6s linear infinite;

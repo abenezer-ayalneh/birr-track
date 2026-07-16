@@ -49,8 +49,9 @@ export function App() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    initTheme()
+    const disposeTheme = initTheme()
     initTelegram().then(() => setReady(true))
+    return disposeTheme
   }, [])
 
   if (!ready) {

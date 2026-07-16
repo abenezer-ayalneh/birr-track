@@ -87,7 +87,7 @@ export function Staff() {
           href={inviteHref()}
           target="_blank"
           rel="noreferrer"
-          style={{ display: 'block', textAlign: 'center', color: '#fff' }}
+          style={{ display: 'block', textAlign: 'center' }}
           onClick={handleInviteClick}
         >
           ＋ {t('staff.inviteSomeone')}

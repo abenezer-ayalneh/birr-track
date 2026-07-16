@@ -2,7 +2,7 @@
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
-  border-bottom: 1px solid #eeeeee;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .filter-tab {
@@ -29,19 +29,19 @@
 .transaction-item {
   text-align: left;
   padding: 12px;
-  border: 1px solid #eeeeee;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   background-color: transparent;
   transition: background-color 0.2s;
 }
 
 .transaction-item:active {
-  background-color: #f5f5f5;
+  background-color: var(--app-surface-muted);
 }
 
 .tx-bank {
   font-weight: 600;
-  color: var(--tg-unsafe-text);
+  color: var(--app-text);
   margin-bottom: 2px;
 }
 
@@ -51,7 +51,7 @@
 
 .tx-amount {
   font-weight: 700;
-  color: var(--tg-unsafe-text);
+  color: var(--app-text);
   text-align: right;
 }
 
@@ -75,24 +75,24 @@
   display: block;
   font-weight: 600;
   margin-bottom: 6px;
-  color: var(--tg-unsafe-text);
+  color: var(--app-text);
 }
 
 .form-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--app-border);
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
-  background-color: var(--tg-color-bg);
-  color: var(--tg-unsafe-text);
+  background-color: var(--app-surface);
+  color: var(--app-text);
 }
 
 .form-input:focus {
   outline: none;
   border-color: var(--tg-color-accent);
-  box-shadow: 0 0 0 2px rgba(0, 136, 204, 0.1);
+  box-shadow: 0 0 0 2px var(--app-focus-ring);
 }
 
 .form-hint {
@@ -112,7 +112,7 @@
   padding: 12px;
   border-radius: 6px;
   background-color: var(--tg-color-accent);
-  color: white;
+  color: var(--app-on-accent);
   font-weight: 600;
   font-size: 14px;
   transition: opacity 0.2s;
@@ -143,8 +143,8 @@
 }
 
 .button-danger {
-  background-color: #ffebee;
-  color: #b71c1c;
+  background-color: var(--app-danger-surface);
+  color: var(--app-danger-text);
 }
 
 .button-danger:disabled {
@@ -153,8 +153,8 @@
 }
 
 .success-message {
-  background-color: #e8f5e9;
-  color: #1b5e20;
+  background-color: var(--app-success-surface);
+  color: var(--app-success-text);
   padding: 12px;
   border-radius: 6px;
   margin-bottom: 16px;
@@ -162,10 +162,15 @@
 }
 
 .edited-flag {
-  background-color: #fff3e0;
-  color: #e65100;
+  background-color: var(--app-warning-surface);
+  color: var(--app-warning-text);
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
   margin-bottom: 12px;
+}
+
+.edited-flag--duplicate {
+  background-color: var(--app-danger-surface);
+  color: var(--app-danger-text);
 }

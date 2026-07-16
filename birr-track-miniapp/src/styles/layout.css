@@ -1,7 +1,7 @@
 .layout {
   display: flex;
   flex-direction: column;
-  background-color: var(--tg-color-bg);
+  background-color: var(--app-surface);
 }
 
 .layout-main {
@@ -15,8 +15,8 @@
 
 .navigation {
   display: flex;
-  border-top: 1px solid #eeeeee;
-  background-color: var(--tg-color-bg);
+  border-top: 1px solid var(--app-border);
+  background-color: var(--app-surface);
   padding: 8px 0;
   gap: 8px;
   justify-content: space-around;
@@ -76,8 +76,8 @@
   height: 34px;
   border: 1px solid var(--tg-color-section-bg);
   border-radius: 8px;
-  background: var(--tg-color-bg);
-  color: var(--tg-color-text);
+  background: var(--app-surface);
+  color: var(--app-text);
   font-size: 12px;
   font-weight: 600;
   padding: 0 8px;
@@ -150,10 +150,10 @@
   min-height: 34px;
   padding: 8px 12px;
   border-radius: 18px;
-  background-color: var(--tg-color-bg);
+  background-color: var(--app-surface);
   color: var(--tg-color-subtitle-text);
   border: 1px solid var(--tg-color-section-bg);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px var(--app-shadow);
   font-size: 12px;
   font-weight: 600;
   opacity: 0;
