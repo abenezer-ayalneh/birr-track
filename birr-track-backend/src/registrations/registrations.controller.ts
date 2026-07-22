@@ -1,10 +1,11 @@
-import { ConflictException, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common'
+import { Body, ConflictException, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common'
 
 import { JwtPayload } from '../auth/auth.service'
 import { AuthUserPayload } from '../auth/decorators/auth-user.decorator'
 import { Roles } from '../auth/decorators/roles.decorator'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { RolesGuard } from '../auth/guards/roles.guard'
+import { RejectRegistrationDto } from './dto/reject-registration.dto'
 import { RegistrationsService } from './registrations.service'
 
 @Controller('registrations')
@@ -33,11 +34,11 @@ export class RegistrationsController {
 
 	@Post(':businessId/reject')
 	@Roles('platform_owner')
-	async rejectBusiness(@Param('businessId', ParseUUIDPipe) businessId: string, @AuthUserPayload() auth: JwtPayload) {
+	async rejectBusiness(@Param('businessId', ParseUUIDPipe) businessId: string, @Body() dto: RejectRegistrationDto, @AuthUserPayload() auth: JwtPayload) {
 		if (auth.role !== 'platform_owner') {
 			throw new ConflictException('Only platform owner can reject registrations')
 		}
-		const { status, message } = await this.registrationsService.rejectBusiness(businessId)
+		const { status, message } = await this.registrationsService.rejectBusiness(businessId, dto.reason)
 		return { status, message }
 	}
 }

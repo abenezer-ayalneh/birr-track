@@ -6,6 +6,7 @@ import type {
   Page,
   PageParams,
   Registration,
+  RegistrationEntryState,
   StaffMember,
   Summary,
   Transaction,
@@ -26,6 +27,7 @@ import {
 
 let currentRole: 'waiter' | 'manager' | 'owner' | 'platform_owner' = 'waiter'
 let currentLanguage: Language = (localStorage.getItem('birr-track-language') as Language | null) || 'en'
+let entryOverride: RegistrationEntryState['status'] | null = null
 
 export function setMockRole(role: 'waiter' | 'manager' | 'owner' | 'platform_owner'): void {
   currentRole = role
@@ -33,6 +35,10 @@ export function setMockRole(role: 'waiter' | 'manager' | 'owner' | 'platform_own
 
 export function getMockRole(): 'waiter' | 'manager' | 'owner' | 'platform_owner' {
   return currentRole
+}
+
+export function setMockEntryState(status: RegistrationEntryState['status'] | null): void {
+  entryOverride = status
 }
 
 /**
@@ -51,6 +57,51 @@ export class MockApiClient implements ApiClient {
 
   async me() {
     return { ...fixtureMe(currentRole), language: currentLanguage }
+  }
+
+  async getEntryState(): Promise<RegistrationEntryState> {
+    const me = { ...fixtureMe(currentRole), language: currentLanguage }
+		if (entryOverride === 'platform_owner' || currentRole === 'platform_owner') return { status: 'platform_owner', ...me, business: me.business ?? undefined }
+
+    const base = { telegramUserId: me.telegramUserId, displayName: me.displayName, language: currentLanguage }
+    if (entryOverride === 'invited') {
+      return {
+        ...base,
+        status: 'invited',
+        invite: { id: 'mock-invite', businessId: 'biz-demo-1', businessName: 'Addis Coffee House', role: 'waiter', expiresAt: new Date(Date.now() + 86400000).toISOString() },
+      }
+    }
+    if (entryOverride === 'pending') {
+      return {
+        ...base,
+        status: 'pending',
+        registration: { id: 'mock-registration', businessName: 'Addis Coffee House', requestedAt: new Date().toISOString() },
+      }
+    }
+    if (entryOverride === 'rejected') {
+      return {
+        ...base,
+        status: 'rejected',
+        registration: { id: 'mock-registration', businessName: 'Addis Coffee House', requestedAt: new Date().toISOString() },
+        rejectionReason: 'Please use the public Business name used by your team.',
+      }
+    }
+    if (entryOverride === 'unregistered') return { ...base, status: 'unregistered' }
+		return { status: 'active', ...me, business: me.business ?? undefined }
+  }
+
+  async submitRegistration(businessName: string, language: Language): Promise<RegistrationEntryState> {
+    const me = { ...fixtureMe(currentRole), language }
+    entryOverride = 'pending'
+    localStorage.setItem('birr-track-language', language)
+    currentLanguage = language
+    return {
+      status: 'pending',
+      telegramUserId: me.telegramUserId,
+      displayName: me.displayName,
+      language,
+      registration: { id: 'mock-registration', businessName: businessName.trim(), requestedAt: new Date().toISOString() },
+    }
   }
 
   async updateLanguage(language: Language): Promise<Language> {

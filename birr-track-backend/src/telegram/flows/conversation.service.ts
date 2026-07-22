@@ -1,22 +1,20 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { SharedUser, UsersShared } from '@telegraf/types'
 import { Action, Command, Ctx, InjectBot, Next, On, Start, Update } from 'nestjs-telegraf'
 import { Markup, Telegraf } from 'telegraf'
-import { BotCommand, Message, User as TelegramUser } from 'telegraf/types'
+import { BotCommand, Message } from 'telegraf/types'
 
-import { BusinessesService } from '../../businesses/businesses.service'
-import { Business } from '../../businesses/entities/business.entity'
 import { InviteBatchOutcome, InvitesService, MAX_INVITE_BATCH_SIZE } from '../../invites/invites.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { SupportedLanguage } from '../../users/entities/user.entity'
 import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
+import { TelegramLinksService } from '../services/telegram-links.service'
 import { INVITE_ROLE_BUTTONS, TELEGRAM_BOT_NAME } from '../telegram.constants'
-import { botText, formatBotText, isSupportedLanguage, LANGUAGE_LABELS } from '../telegram.i18n'
+import { botText, isSupportedLanguage, LANGUAGE_LABELS } from '../telegram.i18n'
+import { renderBotHtml, withTelegramHtml } from '../telegram-html'
 
 interface ConversationSession extends Record<string, unknown> {
-	registering?: boolean
 	inviting?: boolean
 	inviteRole?: 'waiter' | 'manager'
 	language?: SupportedLanguage
@@ -36,22 +34,21 @@ export class ConversationService implements OnModuleInit {
 
 	constructor(
 		@InjectBot(TELEGRAM_BOT_NAME) private readonly bot: Telegraf,
-		private readonly configService: ConfigService,
+		private readonly telegramLinks: TelegramLinksService,
 		private readonly usersService: UsersService,
-		private readonly businessesService: BusinessesService,
 		private readonly invitesService: InvitesService,
 	) {}
 
 	/**
 	 * Set a global Mini App menu button (the persistent button beside the chat input) on startup so
 	 * every user — including the env-bootstrapped Platform Owner, who has no `users` row — can open
-	 * the admin panel without depending on a reply keyboard that is only sent on certain flows.
+	 * the Mini App without depending on a reply keyboard that is only sent on certain flows.
 	 */
 	async onModuleInit(): Promise<void> {
 		await this.configureBotProfile()
 		await this.configureDefaultCommands()
 
-		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
+		const miniAppUrl = this.telegramLinks.getMiniAppUrl()
 		// Telegram only accepts an HTTPS URL for a web_app menu button; skip in local/http dev.
 		if (!miniAppUrl.startsWith('https://')) {
 			this.logger.warn(`Skipping global Mini App menu button: FRONTEND_APP_URL is not HTTPS (${miniAppUrl})`)
@@ -60,7 +57,7 @@ export class ConversationService implements OnModuleInit {
 
 		try {
 			await this.bot.telegram.setChatMenuButton({
-				menuButton: { type: 'web_app', text: 'Open App', web_app: { url: miniAppUrl } },
+				menuButton: { type: 'web_app', text: botText('en').openMiniApp, web_app: { url: miniAppUrl } },
 			})
 			this.logger.log('Global Mini App menu button configured')
 		} catch (err) {
@@ -81,26 +78,47 @@ export class ConversationService implements OnModuleInit {
 		}
 		const t = botText(this.getLanguage(ctx))
 
+		if (ctx.state.isPlatformOwner && !ctx.state.user) {
+			await ctx.reply(renderBotHtml(t.welcomePlatformOwner, {}), withTelegramHtml(this.getPlatformOwnerMenu(ctx)))
+			return
+		}
+
+		if (ctx.state.user && ctx.state.business?.status === 'suspended') {
+			await ctx.reply(renderBotHtml(t.suspendedBusiness, { businessName: ctx.state.business.name }), withTelegramHtml(this.getSupportKeyboard(ctx)))
+			return
+		}
+
+		if (ctx.state.business?.status === 'pending') {
+			await ctx.reply(
+				renderBotHtml(t.pendingBusiness, { businessName: ctx.state.business.name }),
+				withTelegramHtml(this.getMiniAppActionKeyboard(ctx, t.viewRegistration)),
+			)
+			return
+		}
+
+		if (ctx.state.business?.status === 'rejected') {
+			await ctx.reply(
+				this.renderRejectedRegistration(t, ctx.state.business.name, ctx.state.business.rejectionReason),
+				withTelegramHtml(this.getMiniAppActionKeyboard(ctx, t.reviseRegistration)),
+			)
+			return
+		}
+
 		if (ctx.payload === 'invite') {
 			await this.beginInviteFlow(ctx)
 			return
 		}
 
-		if (ctx.state.user) {
-			const greeting = formatBotText(t.welcomeRegistered, { businessName: ctx.state.business?.name || 'your business' })
-			await ctx.reply(greeting, this.getMainMenu(ctx))
+		if (ctx.state.user && ctx.state.business?.status === 'active' && ctx.state.isActiveMember) {
+			const greeting = renderBotHtml(t.welcomeRegistered, {
+				businessName: ctx.state.business.name,
+				role: this.getLocalizedRole(t, ctx.state.user.role),
+			})
+			await ctx.reply(greeting, withTelegramHtml(this.getMainMenu(ctx)))
 			return
 		}
 
-		// The Platform Owner is identified by env (PLATFORM_OWNER_TELEGRAM_ID) and has no `users` row,
-		// so without this branch they would fall through to the register-a-business flow. Greet them
-		// and surface the admin panel instead.
-		if (ctx.state.isPlatformOwner) {
-			await ctx.reply(t.welcomePlatformOwner, this.getPlatformOwnerMenu(ctx))
-			return
-		}
-
-		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username)
+		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username, telegramUserId, t)
 		const redeemed = await this.invitesService.redeem(telegramUserId, displayName)
 
 		if (redeemed) {
@@ -108,13 +126,22 @@ export class ConversationService implements OnModuleInit {
 				redeemed.user.language = this.getLanguage(ctx)
 				await this.usersService.updateLanguage(redeemed.user.id, redeemed.user.language)
 			}
-			const confirmMsg = formatBotText(t.inviteRedeemed, { businessName: redeemed.invite.business.name, role: redeemed.user.role })
-			await ctx.reply(confirmMsg, this.getMainMenu(ctx))
+			const confirmMsg = renderBotHtml(t.inviteRedeemed, {
+				businessName: redeemed.invite.business.name,
+				role: this.getLocalizedRole(t, redeemed.user.role),
+			})
+			await ctx.reply(confirmMsg, withTelegramHtml(this.getMainMenu(ctx, redeemed.user.role)))
 
 			const inviter = redeemed.invite.createdBy
-			const notifyMsg = formatBotText(t.inviterNotify, { displayName, username: ctx.from.username || 'no username', role: redeemed.user.role })
+			const inviterText = botText(inviter.language || 'en')
+			const notifyMsg = renderBotHtml(inviterText.inviterNotify, {
+				displayName,
+				username: ctx.from.username || displayName,
+				role: this.getLocalizedRole(inviterText, redeemed.user.role),
+				businessName: redeemed.invite.business.name,
+			})
 			try {
-				await ctx.telegram.sendMessage(inviter.telegramUserId, notifyMsg)
+				await ctx.telegram.sendMessage(inviter.telegramUserId, notifyMsg, withTelegramHtml())
 			} catch (err) {
 				this.logger.error(`Failed to notify inviter ${inviter.id}: ${describeError(err)}`)
 			}
@@ -122,7 +149,7 @@ export class ConversationService implements OnModuleInit {
 			return
 		}
 
-		await ctx.reply(t.registerOrInvite, this.getRegisterOrInviteKeyboard(ctx))
+		await ctx.reply(renderBotHtml(t.registerOrInvite, {}), withTelegramHtml(this.getRegisterKeyboard(ctx)))
 	}
 
 	@Command('language')
@@ -138,7 +165,7 @@ export class ConversationService implements OnModuleInit {
 	@Command('help')
 	async handleHelpCommand(@Ctx() ctx: IdentifiedContext): Promise<void> {
 		await this.refreshChatCommands(ctx)
-		await ctx.reply(this.getHelpMessage(ctx))
+		await ctx.reply(renderBotHtml(this.getHelpMessage(ctx), {}), withTelegramHtml())
 	}
 
 	@Command('register')
@@ -149,16 +176,39 @@ export class ConversationService implements OnModuleInit {
 		}
 		await this.refreshChatCommands(ctx)
 
-		if (ctx.state.user) {
-			const t = botText(this.getLanguage(ctx))
-			await ctx.reply(formatBotText(t.alreadyRegistered, { businessName: ctx.state.business?.name || 'Birr Track' }))
+		const t = botText(this.getLanguage(ctx))
+		if (ctx.state.isPlatformOwner && !ctx.state.user) {
+			await ctx.reply(renderBotHtml(t.welcomePlatformOwner, {}), withTelegramHtml(this.getPlatformOwnerMenu(ctx)))
 			return
 		}
 
-		const session = (ctx.session || {}) as ConversationSession
-		session.registering = true
-		ctx.session = session
-		await ctx.reply(botText(this.getLanguage(ctx)).askBusinessName)
+		if (ctx.state.business?.status === 'suspended') {
+			await ctx.reply(renderBotHtml(t.suspendedBusiness, { businessName: ctx.state.business.name }), withTelegramHtml(this.getSupportKeyboard(ctx)))
+			return
+		}
+
+		if (ctx.state.business?.status === 'pending') {
+			await ctx.reply(
+				renderBotHtml(t.pendingBusiness, { businessName: ctx.state.business.name }),
+				withTelegramHtml(this.getMiniAppActionKeyboard(ctx, t.viewRegistration)),
+			)
+			return
+		}
+
+		if (ctx.state.business?.status === 'rejected') {
+			await ctx.reply(
+				this.renderRejectedRegistration(t, ctx.state.business.name, ctx.state.business.rejectionReason),
+				withTelegramHtml(this.getMiniAppActionKeyboard(ctx, t.reviseRegistration)),
+			)
+			return
+		}
+
+		if (ctx.state.user && ctx.state.business?.status === 'active') {
+			await ctx.reply(renderBotHtml(t.alreadyRegistered, { businessName: ctx.state.business.name }), withTelegramHtml(this.getMainMenu(ctx)))
+			return
+		}
+
+		await ctx.reply(renderBotHtml(t.registerOrInvite, {}), withTelegramHtml(this.getRegisterKeyboard(ctx)))
 	}
 
 	@Command('invite')
@@ -172,8 +222,28 @@ export class ConversationService implements OnModuleInit {
 	}
 
 	private async beginInviteFlow(ctx: IdentifiedContext): Promise<void> {
+		const t = botText(this.getLanguage(ctx))
+		if (ctx.state.business?.status === 'suspended') {
+			await ctx.reply(renderBotHtml(t.suspendedBusiness, { businessName: ctx.state.business.name }), withTelegramHtml(this.getSupportKeyboard(ctx)))
+			return
+		}
+		if (ctx.state.business?.status === 'pending') {
+			await ctx.reply(
+				renderBotHtml(t.pendingBusiness, { businessName: ctx.state.business.name }),
+				withTelegramHtml(this.getMiniAppActionKeyboard(ctx, t.viewRegistration)),
+			)
+			return
+		}
+		if (ctx.state.business?.status === 'rejected') {
+			await ctx.reply(
+				this.renderRejectedRegistration(t, ctx.state.business.name, ctx.state.business.rejectionReason),
+				withTelegramHtml(this.getMiniAppActionKeyboard(ctx, t.reviseRegistration)),
+			)
+			return
+		}
+
 		if (!ctx.state.user || !ctx.state.isActiveMember || !this.usersService.hasRoleAtLeast(ctx.state.user, 'manager')) {
-			await ctx.reply(botText(this.getLanguage(ctx)).onlyManagersInvite)
+			await ctx.reply(renderBotHtml(t.onlyManagersInvite, {}), withTelegramHtml())
 			return
 		}
 
@@ -182,12 +252,11 @@ export class ConversationService implements OnModuleInit {
 		ctx.session = session
 
 		const roleButtons = this.getInvitableRoles(ctx.state.user.role)
-		const t = botText(this.getLanguage(ctx))
 		const keyboard = Markup.inlineKeyboard(
 			roleButtons.map((role) => [Markup.button.callback(role === 'waiter' ? t.waiter : t.manager, `invite_role_${role}`)]),
 		)
 
-		await ctx.reply(t.chooseInviteRole, keyboard)
+		await ctx.reply(renderBotHtml(t.chooseInviteRole, {}), withTelegramHtml(keyboard))
 	}
 
 	@Action(/^language_(en|am)$/)
@@ -206,8 +275,9 @@ export class ConversationService implements OnModuleInit {
 			ctx.state.user.language = language
 		}
 		await this.refreshChatCommands(ctx)
-		await ctx.answerCbQuery(botText(language).languageSaved)
-		await ctx.reply(botText(language).languageSaved)
+		const t = botText(language)
+		await ctx.answerCbQuery(t.languageSaved)
+		await ctx.editMessageText(renderBotHtml(t.selectionConfirmed, { selection: LANGUAGE_LABELS[language] }), withTelegramHtml({ reply_markup: undefined }))
 		if (shouldContinueStart) {
 			await this.handleStart(ctx)
 		}
@@ -227,11 +297,12 @@ export class ConversationService implements OnModuleInit {
 		}
 
 		const role = match[1] as 'waiter' | 'manager'
-		if (!this.canInviteRole(ctx.state.user?.role, role) || !ctx.state.isActiveMember) {
+		if (!this.canInviteRole(ctx.state.user?.role, role) || !ctx.state.isActiveMember || ctx.state.business?.status !== 'active') {
 			this.clearInviteSession(ctx)
-			await ctx.answerCbQuery()
 			const t = botText(this.getLanguage(ctx))
-			await ctx.reply(role === 'manager' ? t.onlyOwnerInviteManager : t.onlyManagersInvite, Markup.removeKeyboard())
+			const outcome = role === 'manager' ? t.onlyOwnerInviteManager : t.onlyManagersInvite
+			await ctx.answerCbQuery(role === 'manager' ? t.inviteOnlyOwnerCb : t.inviteOnlyManagersCb)
+			await ctx.editMessageText(renderBotHtml(outcome, {}), withTelegramHtml({ reply_markup: undefined }))
 			return
 		}
 
@@ -241,13 +312,15 @@ export class ConversationService implements OnModuleInit {
 		ctx.session = session
 
 		const t = botText(this.getLanguage(ctx))
+		const roleLabel = this.getLocalizedRole(t, role)
 		const userRequest = { max_quantity: MAX_INVITE_BATCH_SIZE, request_name: true }
 		const keyboard = Markup.keyboard([[Markup.button.userRequest(t.selectStaffMember, 1, userRequest)]])
 			.resize(true)
 			.oneTime(true)
 
-		await ctx.reply(formatBotText(t.inviteSelectPrompt, { role }), keyboard)
-		await ctx.answerCbQuery()
+		await ctx.answerCbQuery(roleLabel)
+		await ctx.editMessageText(renderBotHtml(t.selectionConfirmed, { selection: roleLabel }), withTelegramHtml({ reply_markup: undefined }))
+		await ctx.reply(renderBotHtml(t.inviteSelectPrompt, { role: roleLabel }), withTelegramHtml(keyboard))
 	}
 
 	@On('text')
@@ -257,44 +330,22 @@ export class ConversationService implements OnModuleInit {
 		const message = ctx.message as Message.TextMessage
 		const t = botText(this.getLanguage(ctx))
 		if (message.text?.trim() === t.submitReceipt || message.text?.trim() === '📸 Submit Receipt') {
-			await ctx.reply(t.submitReceiptPrompt)
+			if (!ctx.state.user || ctx.state.business?.status !== 'active') {
+				await this.handleStart(ctx)
+				return
+			}
+			await ctx.reply(renderBotHtml(t.submitReceiptPrompt, {}), withTelegramHtml())
 			return
 		}
 
-		const session = (ctx.session || {}) as ConversationSession
-		if (!session?.registering) {
+		if (message.text?.trim() === t.inviteCommand) {
+			await this.beginInviteFlow(ctx)
 			return
 		}
 
-		const businessName = message.text?.trim()
-		const telegramUserId = ctx.from?.id?.toString()
-
-		if (!businessName || !telegramUserId || !ctx.from) {
-			await ctx.reply(t.businessNameEmpty)
-			return
-		}
-
-		const business = await this.businessesService.create({
-			name: businessName,
-		})
-
-		const displayName = this.buildDisplayName(ctx.from.first_name, ctx.from.last_name, ctx.from.username)
-		const user = await this.usersService.joinBusiness({
-			telegramUserId,
-			displayName,
-			businessId: business.id,
-			role: 'owner',
-			language: this.getLanguage(ctx),
-		})
-
-		business.ownerUserId = user.id
-		await this.businessesService.save(business)
-
-		session.registering = false
-		ctx.session = session
-		await ctx.reply(t.registerSuccess)
-
-		await this.notifyPlatformOwner(ctx, business, ctx.from)
+		// Business registration is owned by the Mini App so Telegram's signed
+		// initData is validated for every write. Keep this handler for receipt-menu
+		// text compatibility, but never accept a Business name from chat text.
 	}
 
 	@On('message')
@@ -315,16 +366,22 @@ export class ConversationService implements OnModuleInit {
 
 		const role = session.inviteRole
 
+		if (ctx.state.business?.status !== 'active') {
+			this.clearInviteSession(ctx)
+			await this.beginInviteFlow(ctx)
+			return
+		}
+
 		if (!ctx.state.user || !ctx.state.isActiveMember) {
 			this.clearInviteSession(ctx)
-			await ctx.reply(botText(this.getLanguage(ctx)).notRegistered)
+			await ctx.reply(renderBotHtml(botText(this.getLanguage(ctx)).notRegistered, {}), withTelegramHtml())
 			return
 		}
 
 		if (!this.canInviteRole(ctx.state.user.role, role)) {
 			this.clearInviteSession(ctx)
 			const t = botText(this.getLanguage(ctx))
-			await ctx.reply(role === 'manager' ? t.onlyOwnerInviteManager : t.onlyManagersInvite, Markup.removeKeyboard())
+			await ctx.reply(renderBotHtml(role === 'manager' ? t.onlyOwnerInviteManager : t.onlyManagersInvite, {}), withTelegramHtml(Markup.removeKeyboard()))
 			return
 		}
 
@@ -339,15 +396,15 @@ export class ConversationService implements OnModuleInit {
 			this.clearInviteSession(ctx)
 
 			const t = botText(this.getLanguage(ctx))
-			const confirmMsg = this.formatInviteBatchResult(t, role, selectedUsers, outcomes)
-			await ctx.reply(confirmMsg, Markup.removeKeyboard())
+			const confirmMsg = this.formatInviteBatchResult(t, this.getLocalizedRole(t, role), selectedUsers, outcomes)
+			await ctx.reply(confirmMsg, withTelegramHtml(Markup.removeKeyboard()))
 
 			this.logger.log(
 				`Invite batch processed by ${ctx.state.user.id}: ${outcomes.filter((outcome) => outcome.status === 'created').length} created, ${outcomes.length} selected (${role})`,
 			)
 		} catch (err) {
 			this.clearInviteSession(ctx)
-			await ctx.reply(botText(this.getLanguage(ctx)).failedCreateInvite, Markup.removeKeyboard())
+			await ctx.reply(renderBotHtml(botText(this.getLanguage(ctx)).failedCreateInvite, {}), withTelegramHtml(Markup.removeKeyboard()))
 			this.logger.error(`Failed to create invite batch: ${describeError(err)}`)
 		}
 	}
@@ -365,39 +422,53 @@ export class ConversationService implements OnModuleInit {
 
 	private formatInviteBatchResult(
 		t: ReturnType<typeof botText>,
-		role: 'waiter' | 'manager',
+		role: string,
 		selectedUsers: SelectedTelegramUser[],
 		outcomes: InviteBatchOutcome[],
 	): string {
-		const namesByTelegramId = new Map(selectedUsers.map((user) => [String(user.user_id), this.formatSelectedUserName(user)]))
+		const namesByTelegramId = new Map(selectedUsers.map((user) => [String(user.user_id), this.formatSelectedUserName(t, user)]))
 		const formatNames = (status: InviteBatchOutcome['status']) =>
 			outcomes
 				.filter((outcome) => outcome.status === status)
-				.map((outcome) => namesByTelegramId.get(outcome.inviteeTelegramId) ?? `Telegram #${outcome.inviteeTelegramId}`)
+				.map(
+					(outcome) =>
+						namesByTelegramId.get(outcome.inviteeTelegramId) ??
+						renderBotHtml(t.telegramUserFallback, { telegramUserId: outcome.inviteeTelegramId }),
+				)
 				.join(', ')
 
-		const lines: string[] = []
+		const createdCount = outcomes.filter((outcome) => outcome.status === 'created').length
+		const title = createdCount === outcomes.length ? t.inviteResultCreated : createdCount > 0 ? t.inviteResultPartial : t.inviteResultNone
+		const lines: string[] = title ? [renderBotHtml(title, {}), ''] : []
 		const createdNames = formatNames('created')
 		if (createdNames) {
-			lines.push(formatBotText(t.inviteSent, { count: outcomes.filter((outcome) => outcome.status === 'created').length, names: createdNames, role }))
+			lines.push(renderBotHtml(t.inviteSent, { count: createdCount, names: createdNames, role }))
 		}
 		const skippedNames = formatNames('skipped_active_member')
 		if (skippedNames) {
 			lines.push(
-				formatBotText(t.inviteSkipped, { count: outcomes.filter((outcome) => outcome.status === 'skipped_active_member').length, names: skippedNames }),
+				renderBotHtml(t.inviteSkipped, {
+					count: outcomes.filter((outcome) => outcome.status === 'skipped_active_member').length,
+					names: skippedNames,
+				}),
 			)
 		}
 		const failedNames = formatNames('failed')
 		if (failedNames) {
-			lines.push(formatBotText(t.inviteBatchFailed, { count: outcomes.filter((outcome) => outcome.status === 'failed').length, names: failedNames }))
+			lines.push(
+				renderBotHtml(t.inviteBatchFailed, {
+					count: outcomes.filter((outcome) => outcome.status === 'failed').length,
+					names: failedNames,
+				}),
+			)
 		}
 
-		return lines.join('\n') || t.failedCreateInvite
+		return lines.join('\n')
 	}
 
-	private formatSelectedUserName(user: SelectedTelegramUser): string {
+	private formatSelectedUserName(t: ReturnType<typeof botText>, user: SelectedTelegramUser): string {
 		const name = [user.first_name, user.last_name].filter((part): part is string => Boolean(part?.trim())).join(' ')
-		return name || `Telegram #${user.user_id}`
+		return name || renderBotHtml(t.telegramUserFallback, { telegramUserId: user.user_id })
 	}
 
 	private getInvitableRoles(role: string | undefined): Array<'waiter' | 'manager'> {
@@ -492,23 +563,30 @@ export class ConversationService implements OnModuleInit {
 		}
 	}
 
-	private getMainMenu(ctx: IdentifiedContext) {
+	private getMainMenu(ctx: IdentifiedContext, role = ctx.state.user?.role) {
 		const t = botText(this.getLanguage(ctx))
-		const buttons = [Markup.button.text(t.submitReceipt)]
-		if (this.getInvitableRoles(ctx.state.user?.role).length > 0) {
-			buttons.push(Markup.button.text(t.inviteCommand))
+		const rows = [[Markup.button.text(t.submitReceipt), Markup.button.webApp(t.openMiniApp, this.telegramLinks.getMiniAppUrl())]]
+		if (this.getInvitableRoles(role).length > 0) {
+			rows.push([Markup.button.text(t.inviteCommand)])
 		}
-		return Markup.keyboard([buttons]).resize()
+		return Markup.keyboard(rows).resize()
 	}
 
-	private getRegisterOrInviteKeyboard(ctx: IdentifiedContext) {
+	private getRegisterKeyboard(ctx: IdentifiedContext) {
 		const t = botText(this.getLanguage(ctx))
-		return Markup.keyboard([[Markup.button.text('/register'), Markup.button.text(t.askManagerInvite)]]).resize()
+		return this.getMiniAppActionKeyboard(ctx, t.registerBusiness)
+	}
+
+	private getMiniAppActionKeyboard(_ctx: IdentifiedContext, label: string) {
+		return Markup.inlineKeyboard([[Markup.button.webApp(label, this.telegramLinks.getMiniAppUrl())]])
+	}
+
+	private getSupportKeyboard(ctx: IdentifiedContext) {
+		return Markup.inlineKeyboard([[Markup.button.url(botText(this.getLanguage(ctx)).contactSupport, this.telegramLinks.getSupportUrl())]])
 	}
 
 	private getPlatformOwnerMenu(ctx: IdentifiedContext) {
-		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
-		return Markup.inlineKeyboard([[Markup.button.webApp(botText(this.getLanguage(ctx)).openMiniApp, miniAppUrl)]])
+		return this.getMiniAppActionKeyboard(ctx, botText(this.getLanguage(ctx)).openMiniApp)
 	}
 
 	private getSession(ctx: IdentifiedContext): ConversationSession {
@@ -527,10 +605,30 @@ export class ConversationService implements OnModuleInit {
 		const keyboard = Markup.inlineKeyboard([
 			[Markup.button.callback(LANGUAGE_LABELS.en, 'language_en'), Markup.button.callback(LANGUAGE_LABELS.am, 'language_am')],
 		])
-		await ctx.reply(botText(this.getLanguage(ctx)).languagePrompt, keyboard)
+		await ctx.reply(renderBotHtml(botText(this.getLanguage(ctx)).languagePrompt, {}), withTelegramHtml(keyboard))
 	}
 
-	private buildDisplayName(firstName?: string, lastName?: string, username?: string): string {
+	private getLocalizedRole(t: ReturnType<typeof botText>, role: string): string {
+		if (role === 'waiter') return t.waiter
+		if (role === 'manager') return t.manager
+		return t.owner
+	}
+
+	private renderRejectedRegistration(t: ReturnType<typeof botText>, businessName: string, reason: string | null): string {
+		return renderBotHtml(t.ownerRejected, {
+			businessName,
+			reason: reason ? `${t.reasonPrefix}${reason}` : t.reasonNotProvided,
+			nextStep: t.rejectedNextStep,
+		})
+	}
+
+	private buildDisplayName(
+		firstName: string | undefined,
+		lastName: string | undefined,
+		username: string | undefined,
+		telegramUserId: string,
+		t: ReturnType<typeof botText>,
+	): string {
 		const fullName = [firstName, lastName].filter(Boolean).join(' ').trim()
 		if (fullName) {
 			return fullName
@@ -538,31 +636,6 @@ export class ConversationService implements OnModuleInit {
 		if (username) {
 			return username
 		}
-		return 'Unknown User'
-	}
-
-	private async notifyPlatformOwner(ctx: IdentifiedContext, business: Business, registrant: TelegramUser): Promise<void> {
-		const platformOwnerId = this.configService.get<string>('PLATFORM_OWNER_TELEGRAM_ID')
-		if (!platformOwnerId) {
-			return
-		}
-
-		const profileLink = registrant.username ? `@${registrant.username}` : `Telegram ID: ${registrant.id}`
-		const t = botText('en')
-		const message = formatBotText(t.newRegistration, {
-			businessName: business.name,
-			registrantName: `${registrant.first_name} ${registrant.last_name || ''}`.trim(),
-			profileLink,
-		})
-
-		const approveBtn = Markup.button.callback(t.approveButton, `approve_biz_${business.id}`)
-		const rejectBtn = Markup.button.callback(t.rejectButton, `reject_biz_${business.id}`)
-
-		try {
-			await ctx.telegram.sendMessage(platformOwnerId, message, Markup.inlineKeyboard([[approveBtn, rejectBtn]]))
-			this.logger.log(`Notified Platform Owner of business registration ${business.id}`)
-		} catch (err) {
-			this.logger.error(`Failed to notify Platform Owner: ${describeError(err)}`)
-		}
+		return renderBotHtml(t.telegramUserFallback, { telegramUserId })
 	}
 }

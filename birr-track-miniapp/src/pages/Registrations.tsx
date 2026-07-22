@@ -55,7 +55,7 @@ function RegistrationQueue() {
   }
 
   const approve = useMutation({ mutationFn: (id: string) => api.approveRegistration(id), onSuccess: invalidate })
-  const reject = useMutation({ mutationFn: (id: string) => api.rejectRegistration(id), onSuccess: invalidate })
+  const reject = useMutation({ mutationFn: ({ id, reason }: { id: string; reason?: string }) => api.rejectRegistration(id, reason), onSuccess: invalidate })
   const busy = approve.isPending || reject.isPending
   const lastError = approve.error || reject.error
 
@@ -80,7 +80,14 @@ function RegistrationQueue() {
             <div className="list-sub">{t('platform.requested', { date: formatDate(reg.requestedAt) })}</div>
           </div>
           <div className="list-actions" style={{ justifyContent: 'flex-end' }}>
-            <button className="action-button action-button--danger" disabled={busy} onClick={() => reject.mutate(reg.id)}>
+            <button
+              className="action-button action-button--danger"
+              disabled={busy}
+              onClick={() => {
+                const reason = window.prompt(t('platform.rejectReasonPrompt'))
+                if (reason !== null) reject.mutate({ id: reg.id, reason })
+              }}
+            >
               {t('platform.reject')}
             </button>
             <button className="action-button action-button--primary" disabled={busy} onClick={() => approve.mutate(reg.id)}>

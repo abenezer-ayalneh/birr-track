@@ -169,7 +169,10 @@ export class AddUsersInvitesAndMultiTenancy1718050000000 implements MigrationInt
 		)
 
 		const businessTable = await queryRunner.getTable(BUSINESSES_TABLE)
-		if (businessTable?.findColumnByName('name')?.isUnique) {
+		const businessNameUniqueConstraint = businessTable?.uniques.find((unique) => unique.columnNames.length === 1 && unique.columnNames[0] === 'name')
+		if (businessNameUniqueConstraint) {
+			await queryRunner.dropUniqueConstraint(BUSINESSES_TABLE, businessNameUniqueConstraint)
+		} else if (businessTable?.findColumnByName('name')?.isUnique) {
 			const businessNameIndex = businessTable.indices.find((idx) => idx.columnNames.includes('name') && idx.isUnique)
 			if (businessNameIndex) {
 				await queryRunner.dropIndex(BUSINESSES_TABLE, businessNameIndex)

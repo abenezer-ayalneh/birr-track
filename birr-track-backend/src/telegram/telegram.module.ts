@@ -17,12 +17,13 @@ import { MembershipNotificationsService } from './membership-notifications.servi
 import { createIdentityMiddleware, IdentityService } from './services/identity.service'
 import { TELEGRAM_BOT_NAME } from './telegram.constants'
 import { TelegramController } from './telegram.controller'
-import { TelegramService } from './telegram.service'
 import { TelegramUpdateHandler } from './telegram.update'
+import { TelegramPresentationModule } from './telegram-presentation.module'
 
 @Module({
 	imports: [
 		ConfigModule,
+		TelegramPresentationModule,
 		QueueModule,
 		RateLimitModule,
 		UsersModule,
@@ -48,14 +49,6 @@ import { TelegramUpdateHandler } from './telegram.update'
 		}),
 	],
 	controllers: [TelegramController],
-	providers: [
-		TelegramService,
-		TelegramUpdateHandler,
-		IdentityService,
-		ConversationService,
-		ReceiptService,
-		RegistrationService,
-		MembershipNotificationsService,
-	],
+	providers: [TelegramUpdateHandler, IdentityService, ConversationService, ReceiptService, RegistrationService, MembershipNotificationsService],
 })
 export class TelegramModule {}

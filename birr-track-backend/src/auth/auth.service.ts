@@ -2,7 +2,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createHmac } from 'crypto'
 
-import { UserRole } from '../users/entities/user.entity'
+import { SupportedLanguage, UserRole } from '../users/entities/user.entity'
 import { UsersService } from '../users/users.service'
 import { AdminPanelSessionService } from './admin-panel-session.service'
 import { AuthResponseDto } from './dto/auth-response.dto'
@@ -22,6 +22,8 @@ export type JwtPayload = {
 
 export type InitDataValidationResult = {
 	telegramUserId: string
+	displayName: string
+	language: SupportedLanguage
 	auth_date: number
 	hash: string
 }
@@ -98,7 +100,7 @@ export class AuthService {
 			throw new UnauthorizedException('Invalid initData: missing user')
 		}
 
-		let user: { id: number | string }
+		let user: { id: number | string; first_name?: string; last_name?: string; username?: string; language_code?: string }
 		try {
 			user = JSON.parse(userStr) as { id: number | string }
 		} catch {
@@ -113,6 +115,8 @@ export class AuthService {
 			// Telegram sends user.id as a JSON number; the rest of the app treats
 			// telegramUserId as a string (entity column, env var, bot flows).
 			telegramUserId: String(user.id),
+			displayName: this.displayNameFromTelegramUser(user),
+			language: user.language_code === 'am' ? 'am' : 'en',
 			auth_date: authDate,
 			hash: providedHash,
 		}
@@ -159,6 +163,9 @@ export class AuthService {
 		const user = await this.usersService.findByTelegramId(validated.telegramUserId)
 		if (!user) {
 			throw new UnauthorizedException(`User ${validated.telegramUserId} not found`)
+		}
+		if (user.business?.status === 'pending' || user.business?.status === 'rejected') {
+			throw new UnauthorizedException('Business registration is not active')
 		}
 
 		const sessionPayload: Omit<JwtPayload, 'iat' | 'exp' | 'sessionId'> = {
@@ -271,6 +278,11 @@ export class AuthService {
 		if (payload.role === 'platform_owner') return 'en'
 		const user = await this.usersService.findByTelegramId(payload.telegramUserId)
 		return user?.language ?? 'en'
+	}
+
+	private displayNameFromTelegramUser(user: { first_name?: string; last_name?: string; username?: string }): string {
+		const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+		return fullName || user.username || 'Telegram user'
 	}
 
 	private base64UrlEncode(input: string | Buffer): string {

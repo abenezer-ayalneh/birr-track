@@ -6,6 +6,7 @@ import type {
   Page,
   PageParams,
   Registration,
+  RegistrationEntryState,
   StaffMember,
   Summary,
   Transaction,
@@ -21,7 +22,10 @@ import type {
  * HTTP client (JWT from POST /auth/telegram) behind this same interface.
  */
 export interface ApiClient {
-  /** Who am I — role and Business come from the backend, never the client. */
+	/** Signed Telegram preflight used before a normal Admin Panel session exists. */
+	getEntryState(): Promise<RegistrationEntryState>
+	submitRegistration(businessName: string, language: Language): Promise<RegistrationEntryState>
+	/** Who am I — role and Business come from the backend, never the client. */
   me(): Promise<Me>
   updateLanguage(language: Language): Promise<Language>
 

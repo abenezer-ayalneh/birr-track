@@ -1,4 +1,4 @@
-# Spec: Roles, Multi-tenancy, and the Admin Panel
+# Spec: Roles, Multi-tenancy, and the Mini App
 
 Status: agreed 2026-06-11 (grilling session). Terms used here are defined in [CONTEXT.md](../../CONTEXT.md); key decisions are recorded in [docs/adr/](../adr/).
 
@@ -28,11 +28,11 @@ Rules:
 ## 3. Flows
 
 ### 3.1 Business registration
-1. Unregistered user sends `/register` (or any message → bot offers Register / "ask your manager for an invite").
-2. Bot collects business name (validate: non-empty only). Names are display labels, not identifiers — duplicates are allowed; nothing in the system looks a Business up by name. The approval queue shows the registrant's Telegram profile (name, @username, ID) alongside the business name so the Platform Owner can tell same-named businesses apart and spot brand impersonation.
-3. Business created with status `pending`; sender stored as prospective Owner.
-4. Platform Owner gets a bot DM with details + inline **Approve / Reject** buttons; the same queue appears in the Mini App's platform-owner section (system of record — both surfaces act on the same state, idempotently).
-5. On approve: Business → `active`, registrant becomes Owner, bot notifies them. On reject: bot notifies with reason (free text optional).
+1. An unregistered user opens the Mini App (the bot's `/register` command routes there). The entry screen explains the Receipt → extraction → Mini App flow and offers two equally prominent choices: **Register a Business** or **Join an existing Business**.
+2. Registering collects only a Business name. The Mini App sends signed Telegram `initData` with the request; the backend validates the Telegram proof and creates a `pending` Business plus a Prospective Owner. Names are display labels, not identifiers — duplicates are allowed; nothing in the system looks a Business up by name.
+3. A pending Invite takes precedence over Registration. The Mini App sends an invitee to the bot's `/start` flow, where the bot redeems the ID-bound Invite; Invite creation and redemption remain bot-owned.
+4. The Mini App shows state-aware entry screens for `unregistered`, `invited`, `pending`, `rejected`, and `active`. Pending and rejected users do not receive a normal Mini App session or Business privileges. A rejected Registration keeps the same Business record so its name can be revised and resubmitted; a Platform Owner may provide an optional rejection reason.
+5. Platform Owner approval remains available in the bot and Mini App queue, idempotently. On approve: Business → `active`, registrant becomes Owner, and the bot notifies them. On reject: Business → `rejected`, and the bot notifies the Prospective Owner with the optional reason and a path back to the Mini App.
 
 Business lifecycle: `pending → active | rejected`, plus `suspended` (Platform Owner action; bot refuses receipts, Mini App read-only).
 
@@ -57,11 +57,12 @@ Business lifecycle: `pending → active | rejected`, plus `suspended` (Platform 
 - Saving an edit writes an `EditLog` entry and sets an `edited` flag surfaced in the Manager view, so managers know to verify against the image.
 - Completing all fields of a `needs_review` Transaction transitions it to `recorded`.
 
-## 4. Admin Panel (Mini App)
+## 4. Mini App
 
 New monorepo package `birr-track-miniapp/`: React + Vite + TypeScript, `@telegram-apps/sdk` (initData, theme, back button), TanStack Query.
 
 Views by role (role comes from the backend after initData validation — never from the client):
+- **Pre-registration**: signed Telegram preflight, bilingual entry screen, Registration form, Invite handoff, pending/rejected state screens. No Mini App session is created until the user is active.
 - **Waiter**: my Transactions (status filter), edit screen with image.
 - **Manager/Owner adds**: summary cards — period totals (today/week/month + custom range), per-waiter breakdown, per-bank breakdown, attention counters (needs-review / duplicates / edited, each opening the pre-filtered table); full Transactions table (filter by waiter, bank, status, date; view image; edit); Excel export (existing endpoint, now business-scoped); staff page (list members + roles, revoke pending Invites, remove Waiter; Owner also promotes/demotes/removes Managers).
 - **Platform Owner adds**: pending registrations queue (approve/reject), Business list with suspend.
@@ -77,6 +78,8 @@ Views by role (role comes from the backend after initData validation — never f
 
 ### Auth & API
 - `POST /auth/telegram`: validate Mini App `initData` HMAC (bot token), look up the user, mint a short-lived JWT carrying `userId`, `businessId`, `role`.
+- `POST /registrations/preflight` and `POST /registrations/self`: public transport endpoints that accept signed Telegram `initData`; preflight is read-only, while self-registration is idempotent per Telegram account and supports rejected-registration resubmission.
+- `/auth/telegram` rejects Prospective Owners whose Business is still `pending` or `rejected`; they remain in the signed pre-registration flow.
 - Global JWT guard + role guard; **every existing transactions endpoint becomes authenticated and business-scoped** (today they are wide open — this is a release blocker).
 - `x-editor` header replaced by the authenticated user identity in `EditLog`.
 - New endpoints: registration approval, staff/invite management, image serving (signed URL or authenticated proxy from object storage).
@@ -84,11 +87,11 @@ Views by role (role comes from the backend after initData validation — never f
 
 ### Bot
 - Identity middleware resolving sender → user/business on every update; gates photo handling.
-- `/register` conversation, invite flow with user picker, approve/reject inline buttons, media-group-aware acks, needs-review pings.
+- `/register` routes to the Mini App Registration flow; Invite creation and redemption remain in the bot with the ID-bound user picker and `/start` flow. Approve/reject inline buttons, media-group-aware acks, and needs-review pings remain bot features.
 - Mini App entry: persistent menu button (`setChatMenuButton`) + keyboard `web_app` buttons.
 
 ## 6. Out of scope for v1 (explicitly deferred)
 - Ownership transfer; multi-business membership per account.
-- Desktop/browser access to the Admin Panel (magic links — see ADR-0001).
+- Desktop/browser access to the Mini App (magic links — see ADR-0001).
 - In-chat correction buttons; OCR retraining loop from waiter corrections (collect the data via EditLog now, use it later).
 - Self-serve business approval (stays manual via Platform Owner).

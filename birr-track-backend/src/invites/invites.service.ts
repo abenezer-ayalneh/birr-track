@@ -131,6 +131,26 @@ export class InvitesService {
 		return { invite: saved, user }
 	}
 
+	/**
+	 * Returns the pending Invite for a Telegram account without redeeming it.
+	 * The Mini App uses this to make an Invite take precedence over registration.
+	 */
+	async findPendingForTelegramId(telegramUserId: string): Promise<Invite | null> {
+		const invite = await this.inviteRepository.findOne({
+			where: { inviteeTelegramId: telegramUserId, status: 'pending' },
+			relations: { business: true },
+		})
+		if (!invite) return null
+
+		if (invite.expiresAt.getTime() <= Date.now()) {
+			invite.status = 'expired'
+			await this.inviteRepository.save(invite)
+			return null
+		}
+
+		return invite
+	}
+
 	async revoke(inviteId: string): Promise<Invite> {
 		const invite = await this.inviteRepository.findOne({ where: { id: inviteId } })
 		if (!invite) {

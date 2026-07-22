@@ -20,7 +20,8 @@ import {
 } from '@telegram-apps/sdk'
 
 import type { Role } from '../api/types'
-import { setMockRole } from '../api/mock/client'
+import { setMockEntryState, setMockRole } from '../api/mock/client'
+import i18n from '../i18n'
 
 let _cachedInitData = ''
 let _isInTelegram = false
@@ -82,6 +83,7 @@ export async function initTelegram(): Promise<void> {
       const raw = retrieveRawInitData()
       if (raw) {
         _cachedInitData = raw
+        applyInitialLanguage(raw)
         return
       }
     } catch {
@@ -94,13 +96,33 @@ export async function initTelegram(): Promise<void> {
   const queryRole = urlParams.get('role') as Role | null
   const envRole = (import.meta.env.VITE_DEV_ROLE || 'waiter') as Role
   const role = queryRole || envRole
+  const entry = urlParams.get('entry')
+  const entryStates = ['unregistered', 'invited', 'pending', 'rejected'] as const
 
   _cachedInitData = devInitData(role)
   setMockRole(role)
+  setMockEntryState(entryStates.includes(entry as (typeof entryStates)[number]) ? (entry as (typeof entryStates)[number]) : null)
+  applyInitialLanguage(_cachedInitData)
 
   console.log(
     `[Dev] Running with role="${role}". Switch via ?role=manager|owner|platform_owner or VITE_DEV_ROLE env.`,
   )
+}
+
+function applyInitialLanguage(rawInitData: string): void {
+  if (localStorage.getItem('birr-track-language')) return
+
+  let language: 'en' | 'am' = 'en'
+  try {
+    const rawUser = new URLSearchParams(rawInitData).get('user')
+    const user = rawUser ? (JSON.parse(rawUser) as { language_code?: string }) : undefined
+    if (user?.language_code === 'am') language = 'am'
+  } catch {
+    // Keep the English default when Telegram data is unavailable or malformed in dev mode.
+  }
+
+  localStorage.setItem('birr-track-language', language)
+  void i18n.changeLanguage(language)
 }
 
 /** The raw initData string to exchange for a JWT (real) or feed the mock client. */

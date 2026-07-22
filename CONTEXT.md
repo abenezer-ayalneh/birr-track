@@ -7,7 +7,7 @@ Ethiopian receipt-tracking platform: staff submit payment receipts through a Tel
 ### People & Roles
 
 **Language Preference**:
-A person's selected interface language for Birr Track bot and Admin Panel text. Supported values are English and Amharic. Registered users keep this preference on their Birr Track profile; unregistered people may be asked again if their chat session is lost before they register or redeem an Invite.
+A person's selected interface language for Birr Track bot and Mini App text. Supported values are English and Amharic. Registered users keep this preference on their Birr Track profile; unregistered people may be asked again if their chat session is lost before they register or redeem an Invite.
 _Avoid_: locale, translation setting
 
 **Waiter**:
@@ -15,7 +15,7 @@ A member of a Business who submits Receipts through the Telegram bot. Identified
 _Avoid_: staff, employee, uploader
 
 **Manager**:
-A Waiter with additional rights: reviews reports in the Admin Panel and manages the Waiters of their Business. May leave voluntarily; cannot manage other Managers.
+A Waiter with additional rights: reviews Transactions in the Mini App and manages the Waiters of their Business. May leave voluntarily; cannot manage other Managers.
 _Avoid_: admin
 
 **Owner**:
@@ -35,14 +35,22 @@ The administrative end of another member's Business Membership by an authorized 
 _Avoid_: delete user, fire
 
 **Platform Owner**:
-The operator of Birr Track itself (not of any Business). Approves Business registrations and oversees the platform.
+The operator of Birr Track itself (not of any Business). Decides Registrations and oversees the platform.
 _Avoid_: super-admin, root
+
+**Prospective Owner**:
+The Telegram account attached to a pending Business Registration. It does not have active Owner privileges until the Business is approved.
+_Avoid_: Owner (before approval)
 
 ### Tenancy
 
 **Business**:
-A tenant (e.g., a restaurant) with its own Waiters, Managers, and Transactions. Created by self-serve registration, activated only after Platform Owner approval (lifecycle: pending → active / rejected). A Telegram account belongs to at most one Business. Its name is a display label, not an identifier — duplicate names are allowed.
+A tenant (e.g., a restaurant) with its own Waiters, Managers, and Transactions. Created by self-serve Registration, activated only after Platform Owner approval (lifecycle: pending → active / rejected). A Telegram account belongs to at most one Business. Its name is a display label, not an identifier — duplicate names are allowed.
 _Avoid_: tenant, organization, restaurant
+
+**Registration**:
+A request from a Telegram account without an active Business Membership to create a Business and become its Owner after Platform Owner approval. A rejected Registration may be revised and resubmitted.
+_Avoid_: signup, account creation
 
 **Invite**:
 A Manager's grant letting one specific Telegram account join their Business as a Waiter. An Owner may grant either Waiter or Manager membership. Bound to the invitee's Telegram ID at creation via Telegram's native user picker; redeemed automatically when that person starts the bot.
@@ -72,13 +80,13 @@ _Avoid_: copy, resubmission
 
 ### Surfaces
 
-**Admin Panel**:
-The Telegram Mini App where Managers view Transactions, summaries, and manage staff; the Platform Owner additionally approves Business registrations there.
-_Avoid_: dashboard, admin site, web app
+**Mini App**:
+Birr Track's Telegram Mini App, where Waiters review their Transactions, Managers and Owners review Business Transactions and manage members, and the Platform Owner reviews Registrations and oversees Businesses.
+_Avoid_: Admin Panel, dashboard, admin site, web app
 
-**Admin Panel Session**:
-Server-managed authenticated state for an open Admin Panel. Created only after Telegram `initData` validation, renewable while the Admin Panel remains visible, and bounded by idle and absolute expiry.
-_Avoid_: login session, browser session, Telegram session
+**Mini App Session**:
+Server-managed authenticated state for an open Mini App. Created only after Telegram `initData` validation, renewable while the Mini App remains visible, and bounded by idle and absolute expiry.
+_Avoid_: Admin Panel Session, login session, browser session, Telegram session
 
 ### Infrastructure
 

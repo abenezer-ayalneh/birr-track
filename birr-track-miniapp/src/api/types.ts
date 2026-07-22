@@ -29,7 +29,22 @@ export interface Me {
   role: Role
   language: Language
   /** null for the Platform Owner, who belongs to no Business. */
-  business: Business | null
+	business: Business | null
+}
+
+export type RegistrationEntryStatus = 'unregistered' | 'invited' | 'pending' | 'rejected' | 'active' | 'platform_owner'
+
+export interface RegistrationEntryState {
+	status: RegistrationEntryStatus
+	telegramUserId: number
+	displayName: string
+	language: Language
+	userId?: string
+	role?: Role
+	business?: Business
+	registration?: { id: string; businessName: string; requestedAt: string }
+	rejectionReason?: string | null
+	invite?: { id: string; businessId: string; businessName: string; role: Exclude<StaffRole, 'owner'>; expiresAt: string }
 }
 
 export type TransactionStatus = 'recorded' | 'needs_review'

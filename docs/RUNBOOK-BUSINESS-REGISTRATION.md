@@ -1,93 +1,105 @@
 # Runbook: Business Registration
 
 **Owner:** Abenezer Ayalneh | **Frequency:** As needed (every new tenant)
-**Last Updated:** 2026-06-15 | **Last Run:** —
+**Last Updated:** 2026-07-19 | **Last Run:** —
 
 ## Purpose
 
-How a new tenant (Business) is onboarded onto Birr Track end-to-end. Registration is **self-serve with manual approval**: a business owner registers through the Telegram bot, and the **Platform Owner** (the bot/operator) approves or rejects it. This runbook covers both sides plus verification, troubleshooting, and rollback.
+How a new Business is onboarded onto Birr Track end-to-end. Registration is **self-serve with manual approval**: a Prospective Owner enters through the Telegram bot, submits the Registration in the signed Telegram Mini App, and the Platform Owner approves or rejects it. This runbook covers both sides plus verification, troubleshooting, and rollback.
 
 Design reference: [docs/specs/roles-and-admin-panel.md §3.1](specs/roles-and-admin-panel.md). Identity model: [ADR-0001](adr/0001-telegram-is-the-only-identity-provider.md), [ADR-0002](adr/0002-single-shared-bot-multi-tenant.md).
 
 ### Flow at a glance
 
 ```
-Business owner                         Platform owner (bot operator)
---------------                         -----------------------------
-/start  ──► not registered
-/register
-  └─ "What is your business name?"
-  └─ replies with name
-        │  Business created (status=pending), sender stored as prospective owner
+Prospective Owner                         Platform Owner (bot operator)
+-----------------                         -----------------------------
+/start or /register
+  └─ [ Register a Business ]
+        │
         ▼
-  "submitted for approval"   ───DM───►  "New business registration: …"
-                                         [ ✅ Approve ]  [ ❌ Reject ]
-                                         (or Mini App ► Platform ► Registrations)
-        ┌──────────────────────────────────────┘
+  Mini App validates Telegram identity
+  └─ enter Business name
+  └─ submit Registration
+        │  Business created (status=pending)
+        │  sender stored as Prospective Owner
+        ├──────────────────────────────DM────►  New Registration card
+        │                                      [ Approve ] [ Reject ]
+        │                                      (or Mini App ► Platform ► Registrations)
         ▼
-  "🎉 approved!" / "not approved"
-  (on approve: role ► owner, business ► active)
+  Pending Registration view
+        │
+        ├─ approved ─► DM + [ Open Mini App ] ─► Owner, Business active
+        └─ rejected ─► DM + [ Revise Registration ] ─► edit and resubmit
 ```
 
-Business lifecycle: `pending → active | rejected`, plus `suspended` (Platform Owner action on an active business). The bot DM buttons and the Mini App act on the **same state, idempotently** — either surface works.
+Business lifecycle: `pending → active | rejected`, plus `suspended` (Platform Owner action on an active Business). The bot DM buttons and the Mini App act on the **same state, idempotently** — either surface works.
 
 ---
 
 ## Prerequisites
 
 - [ ] Backend, bot webhook, and DB are up and healthy (see [RUNBOOK-DEPLOY.md](RUNBOOK-DEPLOY.md)).
-- [ ] **`PLATFORM_OWNER_TELEGRAM_ID`** is set in the backend env to the Platform Owner's **numeric** Telegram user ID (not @username). Set in `.env` (dev) / `.env.production` (prod) — see [.env.example](../.env.example) line 11. Without it, no approval DM is sent and nobody can approve.
+- [ ] **`PLATFORM_OWNER_TELEGRAM_ID`** is set in the backend env to the Platform Owner's **numeric** Telegram user ID (not @username). Set it in `.env` (dev) / `.env.production` (prod). Without it, no Registration alert is sent and nobody can approve.
+- [ ] **`FRONTEND_APP_URL`** points to the deployed HTTPS Mini App.
+- [ ] **`TELEGRAM_SUPPORT_URL`** is a valid HTTPS support destination, such as `https://t.me/birr_track_support`. The backend refuses to start when it is missing or invalid.
+- [ ] **`VITE_BOT_USERNAME`** contains the bot username without `@`, so the Mini App can send invited people back to the bot.
 - [ ] The Platform Owner has **sent `/start` to the bot at least once**. Telegram cannot DM a user who has never opened a chat with the bot — the approval notification will silently fail otherwise.
-- [ ] The registering owner has a Telegram account that does **not already belong to a Business** (one account = one Business — [ADR-0002](adr/0002-single-shared-bot-multi-tenant.md)).
-- [ ] The registering owner has **no pending invite** for their Telegram ID. If one exists, `/start` auto-redeems it and they join as staff instead of registering (see Troubleshooting).
+- [ ] The Prospective Owner has a Telegram account that does **not already belong to a Business** (one account = one Business — [ADR-0002](adr/0002-single-shared-bot-multi-tenant.md)).
+- [ ] The Prospective Owner has **no pending Invite** for their Telegram ID. If one exists, `/start` auto-redeems it and creates the granted Business Membership instead of a Registration (see Troubleshooting).
 
 > **Finding a numeric Telegram ID:** message `@userinfobot` on Telegram, or check the backend log line `Resolved user <id>: … isPlatformOwner=<true|false>` emitted by `IdentityService` on each update.
 
 ---
 
-## Procedure — Part A: Business Owner side
+## Procedure — Part A: Prospective Owner side
 
 #### A1: Open the bot and start
 
 ```
 Send: /start
 ```
-**Expected result:** If not yet registered and with no pending invite, the bot replies:
-> You're not registered yet. Send /register to create a business, or ask your manager for an invite.
-
-...with a reply keyboard offering **`/register`** and **"Ask your manager for an invite"**.
+**Expected result:** If the Telegram account has no Business Membership and no pending Invite, the bot shows a concise Registration card with a **Register a Business** Mini App action. The card explains that someone joining an existing Business should ask a Manager or Owner for an Invite; there is no separate “ask manager” keyboard button.
 
 **If it fails:**
-- Bot says *"Welcome back to …"* → this account is already a member of a Business. Registration is not needed; use a different account to register a new Business.
-- Bot says *"You've been added to … as a …"* → a pending invite was auto-redeemed; this account is now staff, not an owner. See Troubleshooting.
+- The bot shows the active Business menu → this account is already a member of a Business. Registration is not needed; use a different account to register a new Business.
+- The bot confirms an Invite was redeemed → this account now has a Business Membership, not a Registration. See Troubleshooting.
+- The bot shows **View Registration** or **Revise Registration** → this account already has a pending or rejected Registration; continue from that state instead of creating another Business.
 
-#### A2: Start registration
+#### A2: Open Registration in the Mini App
 
 ```
 Send: /register
 ```
-**Expected result:** Bot replies:
-> What is your business name?
+**Expected result:** For an unregistered, pending, or rejected account, `/register` shows the corresponding Registration card and Mini App action. Tap it. The Mini App validates Telegram `initData` and presents the state for that Telegram account without a separate password:
 
-**If it fails:** Bot replies *"You are already registered with …"* → the account already belongs to a Business (one-account-one-business). Stop; use another account.
+- `unregistered` → Registration form is available.
+- `invited` → return to the bot to redeem the Invite.
+- `pending` → view the submitted Registration.
+- `rejected` → view the rejection reason and revise the Registration.
+- `active` → use `/start` and **Open Mini App** for the existing Business Membership; no second Registration is created.
 
-#### A3: Provide the business name
+The bot does not collect a Business name in chat.
+
+**If it fails:** If Telegram opens the Mini App without signed `initData`, close it and reopen it from the bot. If the action opens the wrong URL, verify `FRONTEND_APP_URL`.
+
+#### A3: Submit the Business name
 
 ```
-Send: <your business name>   e.g. "Tomoca Coffee Bole"
+Mini App ► Register a Business
+Business name: Tomoca Coffee Bole
+Tap: Submit for approval
 ```
-**Expected result:** Business is created with status `pending`, the sender is stored as the prospective Owner (role `owner`, not yet active), and the bot replies:
-> Thank you! Your business registration has been submitted for approval. We'll notify you when it's ready.
+**Expected result:** The Business is created with status `pending`, the Telegram account is stored as its Prospective Owner, and the Mini App switches to the pending Registration view. The Platform Owner is notified automatically (Part B).
 
-The Platform Owner is then notified automatically (Part B).
-
-**If it fails:** Empty / whitespace-only name → *"Business name cannot be empty. Please try again."* Re-send `/register` and provide a non-empty name. (Names are display labels only — duplicates are allowed.)
+**If it fails:** Empty / whitespace-only name stays in the form with a validation message. Enter a non-empty name and resubmit. Business names are display labels, so duplicates are allowed.
 
 #### A4: Wait for the decision
 
-**Expected result:** The owner receives one of these DMs once the Platform Owner acts:
-- **Approved:** `🎉 Your business "<name>" has been approved! You can now start accepting receipts from your team.`
-- **Rejected:** `Your business registration for "<name>" was not approved at this time. Please contact support for details.`
+**Expected result:** The Prospective Owner receives exactly one decision DM when the state changes, whether the decision came from the bot alert or Mini App:
+
+- **Approved:** an outcome-first approval card with an **Open Mini App** action. The Business becomes `active` and the Prospective Owner becomes its Owner.
+- **Rejected:** a revision card containing the Business name and stored reason (or that no reason was provided), with a **Revise Registration** action. The Mini App pre-fills the existing name; submitting it again moves the same Business back to `pending` and sends a new Platform Owner alert.
 
 ---
 
@@ -99,41 +111,35 @@ Pick **either** B-path. Both hit the same backend state and are idempotent.
 
 #### B1.1: Open the registration notification
 
-**Expected result:** When a business registers, the Platform Owner gets a bot DM:
-> New business registration:
->
-> Business: \<name\>
-> Registrant: \<First Last\> (@username *or* Telegram ID: \<id\>)
->
-> Approve or reject below.
+**Expected result:** When a Business is submitted or resubmitted, the Platform Owner gets an English Registration card. It identifies the Business and Prospective Owner once, then offers **Approve** and **Reject** inline actions (callback data `approve_biz_<businessId>` / `reject_biz_<businessId>`).
 
-...with inline buttons **`✅ Approve`** and **`❌ Reject`** (callback data `approve_biz_<businessId>` / `reject_biz_<businessId>`).
-
-**If it fails (no DM arrives):** see Troubleshooting → "Platform Owner never gets the DM". Fall back to Path B2 (Mini App), which reads the live pending queue regardless of whether the DM was delivered.
+**If it fails (no alert arrives):** see Troubleshooting → "Platform Owner never gets the Registration alert". Fall back to Path B2 (Mini App), which reads the live pending queue regardless of whether the alert was delivered.
 
 #### B1.2: Tap a decision
 
 ```
-Tap: ✅ Approve   (or ❌ Reject)
+Tap: Approve   (or Reject)
 ```
 **Expected result:**
-- **Approve:** business → `active`; the registrant is promoted to `owner`; they get the approval DM; the message updates to `✅ Approved: <name>`; toast *"Business approved!"*.
-- **Reject:** business → `rejected`; the registrant gets the rejection DM; the message updates to `❌ Rejected: <name>`; toast *"Business rejected."*.
+- **Approve:** Business → `active`; the Prospective Owner becomes the Owner; they get the localized approval message with **Open Mini App**; the Platform Owner alert is edited into its final approved card.
+- **Reject:** Business → `rejected`; the Prospective Owner gets the localized rejection DM with **Revise Registration**; the Platform Owner alert is edited into its final rejected card.
+
+The callback popup is a short plain-text outcome. Repeating a decision is an idempotent no-op and does not send another Prospective Owner DM.
 
 **If it fails:**
-- *"Only the Platform Owner can approve/reject registrations."* → the tapping account's Telegram ID ≠ `PLATFORM_OWNER_TELEGRAM_ID`. Verify the env var.
-- *"Already approved."* / *"Already rejected."* → idempotent no-op; the decision was already made. Nothing to do.
-- *"Cannot approve/reject this business."* → the business is in a terminal/blocking state (e.g. trying to reject an `active` one, or approve a `rejected`/`suspended` one). See Rollback.
-- *"Business not found."* → the business was deleted, or the button is stale. Use Path B2.
+- The popup says only the Platform Owner may decide → the tapping account's Telegram ID differs from `PLATFORM_OWNER_TELEGRAM_ID`. Verify the env var.
+- The popup says the Registration was already approved/rejected → idempotent no-op; nothing else is required.
+- The popup says the Business cannot be approved/rejected → its state blocks that transition. See Rollback.
+- The popup says the Business was not found → the alert is stale. Use Path B2.
 
 ### Path B2 — Approve/Reject from the Mini App
 
 #### B2.1: Open the Platform section
 
 ```
-Bot menu ► Open App ► bottom nav ► "Platform" (✅)
+Bot menu ► Open Mini App ► bottom nav ► Platform
 ```
-**Expected result:** The **Platform** page loads (visible only to `platform_owner` role) with two tabs: **Registrations** and **Businesses**. The Registrations tab shows the pending queue — each row lists the business name, registrant display name, @username, Telegram ID, and request date.
+**Expected result:** The **Platform** page loads (visible only to `platform_owner` role) with **Registrations** and **Businesses** tabs. The Registrations queue shows the Business name, Prospective Owner identity, and request date.
 
 **If it fails:** No "Platform" nav item, or 403 / *"Only platform owner can access registrations"* → you are not signed in as the Platform Owner. The role is derived server-side from `PLATFORM_OWNER_TELEGRAM_ID` during `POST /auth/telegram`; confirm the Mini App was opened from the Platform Owner's Telegram account.
 
@@ -142,7 +148,7 @@ Bot menu ► Open App ► bottom nav ► "Platform" (✅)
 ```
 Tap: Approve   (or Reject) on the row
 ```
-**Expected result:** The row disappears from the pending queue; on approve the business moves to the **Businesses** tab with status `active`. Backend calls:
+**Expected result:** The row disappears from the pending queue. Approval moves the Business to `active`; rejection stores the optional reason. The same localized Prospective Owner DM is sent exactly once as for a bot-button decision. Backend calls:
 - `GET  /registrations` — list pending (platform_owner only)
 - `POST /registrations/<businessId>/approve`
 - `POST /registrations/<businessId>/reject`
@@ -155,8 +161,9 @@ Tap: Approve   (or Reject) on the row
 
 After approval, confirm onboarding succeeded:
 
-- [ ] **Owner side:** registrant received the `🎉 … approved!` DM (i.e. it greets them with *"Welcome back to \<name\>"* on `/start`).
-- [ ] **Platform side:** the business no longer appears in the **Registrations** queue and shows as `active` in the **Businesses** tab (or `GET /registrations` no longer returns it).
+- [ ] **Owner side:** the Prospective Owner received the approval message, its **Open Mini App** action works, and `/start` now shows the active Business menu.
+- [ ] **Bot presentation:** each normal English card has one descriptive emoji, a bold outcome-first title, short labeled facts, and one clear next step; callback popups remain short plain text.
+- [ ] **Platform side:** the Business no longer appears in the **Registrations** queue and shows as `active` in the **Businesses** tab (or `GET /registrations` no longer returns it).
 - [ ] **DB check (optional, authoritative):**
 
   ```bash
@@ -175,15 +182,16 @@ After approval, confirm onboarding succeeded:
 
 | Symptom | Likely Cause | Fix |
 |---|---|---|
-| Platform Owner never gets the approval DM | `PLATFORM_OWNER_TELEGRAM_ID` unset/wrong, **or** the Platform Owner never sent `/start` to the bot (Telegram can't DM cold) | Set the env var to the correct numeric ID, restart the backend, and have the Platform Owner `/start` the bot once. Meanwhile approve via Mini App (Path B2). |
-| Tapping Approve → *"Only the Platform Owner can approve registrations."* | Tapping account's Telegram ID ≠ `PLATFORM_OWNER_TELEGRAM_ID` | Confirm the env var matches that account's **numeric** ID (see "Finding a numeric Telegram ID"). |
-| *"Already approved."* / *"Already rejected."* | Idempotent no-op; decision already made (e.g. both surfaces used) | None — already done. |
-| *"Cannot approve this business."* | Business is `rejected` or `suspended` (approve is blocked from these states) | See Rollback to move it back to `pending` first. |
-| *"Cannot reject this business."* | Business is already `active` | Use **Suspend** instead of reject (Rollback). |
-| Owner sends `/register` → *"You are already registered with …"* | That Telegram account already belongs to a Business (one-account-one-business, [ADR-0002](adr/0002-single-shared-bot-multi-tenant.md)) | Register from a different account, or remove the account from its current Business first. |
-| `/start` says *"You've been added to … as a …"* instead of offering register | A pending **invite** existed for this Telegram ID and was auto-redeemed | Expected behavior. If they should own a new Business, revoke the invite (Mini App ► Staff) **before** they `/start`, or use a different account. |
+| Platform Owner never gets the Registration alert | `PLATFORM_OWNER_TELEGRAM_ID` unset/wrong, **or** the Platform Owner never sent `/start` to the bot (Telegram cannot initiate a cold DM) | Set the env var to the correct numeric ID, restart the backend, and have the Platform Owner send `/start` once. Meanwhile approve via Mini App (Path B2). |
+| Backend will not start; error names `TELEGRAM_SUPPORT_URL` | Support URL is missing, malformed, or not HTTPS | Set it to a valid HTTPS destination such as `https://t.me/birr_track_support`, then restart the backend. |
+| Tapping **Approve** says only the Platform Owner may decide | Tapping account's Telegram ID ≠ `PLATFORM_OWNER_TELEGRAM_ID` | Confirm the env var matches that account's **numeric** ID (see “Finding a numeric Telegram ID”). |
+| Decision reports already approved/rejected | Idempotent no-op; another surface already made the decision | None — the original decision remains authoritative and no duplicate DM is sent. |
+| Business cannot be approved | Business is `rejected` or `suspended` | A rejected Prospective Owner must revise and resubmit first; unsuspend a suspended Business instead. |
+| Business cannot be rejected | Business is already `active` | Use **Suspend** instead of Reject (Rollback). |
+| `/register` opens the normal Mini App | That Telegram account already has an active Business Membership | Registration is not needed. Use a different Telegram account for a new Business. |
+| `/start` confirms an Invite instead of offering Registration | A pending Invite existed for this Telegram ID and was auto-redeemed | Expected behavior. If they should own a new Business, revoke the Invite (Mini App ► Staff) **before** they send `/start`, or use a different account. |
 | Mini App: no "Platform" tab, or `GET /registrations` 403 | Signed-in user isn't the Platform Owner (JWT role ≠ `platform_owner`) | Open the Mini App from the Platform Owner's Telegram account; verify `PLATFORM_OWNER_TELEGRAM_ID`. |
-| Approval DM never reaches the **owner** after approve | Owner blocked the bot, or `ownerUserId`/user record missing | Check backend logs for `Failed to notify registrant`; have the owner `/start` the bot; the status change still applies regardless of DM delivery. |
+| Decision DM never reaches the Prospective Owner | They blocked the bot, or the Prospective Owner record is missing | Check backend logs for the failed decision notification; have them send `/start`. The state change still applies regardless of DM delivery. |
 
 ---
 
@@ -192,14 +200,8 @@ After approval, confirm onboarding succeeded:
 There is **no automatic "un-approve"** — approval is one-way in the normal flow. Use these instead:
 
 - **Approved by mistake → Suspend.** Mini App ► Platform ► **Businesses** tab ► **Suspend**. A suspended Business: the bot refuses receipts and the Mini App is read-only. Reverse with **Unsuspend** (returns it to `active`).
-- **Rejected by mistake → must reopen, then re-approve.** Approving a `rejected` business is blocked (`ConflictException`), so set it back to `pending` in the DB first, then approve via Path B1/B2:
-
-  ```bash
-  docker compose -f docker-compose.prod.yml exec postgres \
-    psql -U "${DATABASE_USER:-postgres}" -d "${DATABASE_NAME:-birr_track}" \
-    -c "UPDATE businesses SET status='pending' WHERE id='<businessId>';"
-  ```
-- **Fully undo an onboarding (last resort, manual DB).** Set the business back and demote/detach the owner. Do this only with a DB backup taken first:
+- **Rejected by mistake → revise and resubmit.** Ask the Prospective Owner to use **Revise Registration** in the DM or `/start`, then submit the pre-filled Business name again. The same Business returns to `pending`; approve it through Path B1 or B2.
+- **Fully undo an onboarding (last resort, manual DB).** Set the Business back and demote/detach the Owner. Do this only with a DB backup taken first:
 
   ```sql
   -- inside psql; verify the IDs first
@@ -216,9 +218,9 @@ There is **no automatic "un-approve"** — approval is one-way in the normal flo
 
 | Situation | Contact | Method |
 |---|---|---|
-| Approval DMs not sending despite correct env + `/start` | Backend on-call | Check backend logs (`Failed to notify Platform Owner`) + Telegram webhook health ([RUNBOOK-DEPLOY.md](RUNBOOK-DEPLOY.md)) |
+| Registration alerts not sending despite correct env + `/start` | Backend on-call | Check backend logs (`Failed to notify Platform Owner`) + Telegram webhook health ([RUNBOOK-DEPLOY.md](RUNBOOK-DEPLOY.md)) |
 | Business stuck in a state no surface can change | Platform Owner / DB admin | Manual DB fix per Rollback, with a backup first |
-| Suspected brand impersonation in the queue | Platform Owner | Reject; cross-check registrant Telegram profile (name/@username/ID shown in the queue) |
+| Suspected brand impersonation in the queue | Platform Owner | Reject; cross-check the Prospective Owner's Telegram identity shown in the queue |
 
 ---
 
@@ -226,4 +228,5 @@ There is **no automatic "un-approve"** — approval is one-way in the normal flo
 
 | Date | Run By | Notes |
 |------|--------|-------|
+| 2026-07-19 | — | Replaced chat Registration with the signed Mini App flow; documented contextual actions, revision, and support URL. |
 | 2026-06-15 | — | Runbook created. |

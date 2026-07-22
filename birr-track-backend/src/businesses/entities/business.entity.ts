@@ -18,6 +18,10 @@ export class Business {
 	@Column({ type: 'uuid', nullable: true })
 	ownerUserId!: string | null
 
+	/** Optional feedback shown when a Platform Owner rejects a registration. */
+	@Column({ type: 'varchar', length: 1000, nullable: true })
+	rejectionReason!: string | null
+
 	@CreateDateColumn({ type: 'timestamptz' })
 	createdAt!: Date
 }

@@ -1,24 +1,25 @@
 # Runbook: Full Deployment
 
 **Owner:** Abenezer Ayalneh | **Frequency:** As needed
-**Last Updated:** 2026-06-14 | **Last Run:** —
+**Last Updated:** 2026-07-19 | **Last Run:** —
 
 ## Purpose
 
 Deploy Birr Track end-to-end:
 
-- **VPS (Ubuntu 22.04/24.04):** NestJS backend, Vite Admin Panel, PostgreSQL, Redis, MinIO, Caddy (auto-HTTPS)
+- **VPS (Ubuntu 22.04/24.04):** NestJS backend, Vite Mini App, PostgreSQL, Redis, MinIO, Caddy (auto-HTTPS)
 - **RunPod Serverless:** Fine-tuned Qwen2.5-VL-3B Receipt extraction (VLM Worker)
 
 Domains:
 - API: `birr-track-api.abenezer-ayalneh.dev`
-- Admin Panel: `birr-track-telegram-app.abenezer-ayalneh.dev`
+- Mini App: `birr-track-telegram-app.abenezer-ayalneh.dev`
 
 ## Prerequisites
 
 - [ ] VPS with Ubuntu 22.04 or 24.04, root/sudo SSH access
 - [ ] Domain `abenezer-ayalneh.dev` with DNS control (Cloudflare, Namecheap, etc.)
 - [ ] Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+- [ ] HTTPS Telegram support destination for the bot's **Contact Support** action (for example, `https://t.me/birr_track_support`)
 - [ ] Docker Hub account: `abenezerayalneh`
 - [ ] RunPod account (create at [runpod.io](https://runpod.io))
 - [ ] `qwen25vl-3b-birrtrack-lora.zip` (the trained LoRA adapter)
@@ -146,11 +147,12 @@ Edit `.env` and fill in:
 | `STORAGE_SECRET_KEY` | Generated above |
 | `TELEGRAM_BOT_TOKEN` | From [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_WEBHOOK_SECRET` | Generated above |
+| `TELEGRAM_SUPPORT_URL` | Required HTTPS support destination, such as `https://t.me/birr_track_support` |
 | `VITE_BOT_USERNAME` | Your bot's username (without @) |
 | `RUNPOD_API_KEY` | From RunPod (fill in after Part 6) |
 | `RUNPOD_ENDPOINT_ID` | From RunPod (fill in after Part 6) |
 
-**Important:** Every empty value must be filled before starting services. The `DATABASE_URL` is not in the `.env` — the backend constructs it from the individual `DATABASE_*` variables.
+**Important:** Every empty value must be filled before starting services. In particular, the backend validates `TELEGRAM_SUPPORT_URL` during startup and exits if it is missing, malformed, or not HTTPS; there is no fallback support link. The `DATABASE_URL` is not in the `.env` — the backend constructs it from the individual `DATABASE_*` variables.
 
 > **Internal vs external ports — do not confuse them.** `DATABASE_PORT` (5432) and `REDIS_PORT` (6379) are the **internal** container ports the backend dials over the Docker network; they must match what the containers listen on and should not be changed. `DATABASE_EXTERNAL_PORT` (5433) and `REDIS_EXTERNAL_PORT` (6380) are the **VPS-host** ports published for outside access — change *these* if 5432/6379 are already taken on the host. Putting the external value into `DATABASE_PORT`/`REDIS_PORT` makes the backend fail with `ECONNREFUSED` (see Troubleshooting).
 
@@ -188,7 +190,7 @@ sudo systemctl reload caddy
 **Expected result:** `caddy validate` reports no errors. After reload, Caddy serves both new subdomains alongside existing sites.
 **If it fails:** Check that the import path is correct and there are no duplicate site addresses across your Caddyfiles.
 
-> **Note:** `caddy/birr-track.caddy` hardcodes `localhost:3004` (backend) and `localhost:3003` (Admin Panel). If you change `BACKEND_PORT` or `MINI_APP_PORT` in `.env`, you must also update the ports in that file.
+> **Note:** `caddy/birr-track.caddy` hardcodes `localhost:3004` (backend) and `localhost:3003` (Mini App). If you change `BACKEND_PORT` or `MINI_APP_PORT` in `.env`, you must also update the ports in that file.
 
 ---
 
@@ -274,7 +276,7 @@ curl https://birr-track-api.abenezer-ayalneh.dev/health
 curl -sI https://birr-track-telegram-app.abenezer-ayalneh.dev | head -5
 ```
 
-**Expected result:** Backend returns a JSON health response; Admin Panel returns `200 OK`.
+**Expected result:** Backend returns a JSON health response; Mini App returns `200 OK`.
 
 ---
 
@@ -437,6 +439,8 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 
 - [ ] `curl https://birr-track-api.abenezer-ayalneh.dev/health` returns OK
 - [ ] `curl https://birr-track-telegram-app.abenezer-ayalneh.dev` returns HTML
+- [ ] `/start` shows the correct contextual **Open Mini App**, **Register a Business**, **View Registration**, or **Revise Registration** action for the test account
+- [ ] A suspended Business's **Contact Support** action opens `TELEGRAM_SUPPORT_URL`
 - [ ] Send a Receipt image to the Telegram bot → Transaction is created
 - [ ] RunPod dashboard shows the endpoint received a request
 - [ ] `docker compose -f docker-compose.prod.yml ps` shows all containers healthy
@@ -457,7 +461,8 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 | Backend logs `Invalid Telegram webhook secret token` (401) | The `secret_token` Telegram sends (header) doesn't match `TELEGRAM_WEBHOOK_SECRET` in `.env` | Re-run Step 12 with the correct `secret_token`; ensure `.env` is sourced so both sides use the same value |
 | `getWebhookInfo` shows `403 Forbidden`, but a **direct** POST to the backend (`curl http://127.0.0.1:${BACKEND_PORT:-3004}/telegram/webhook/$SECRET` with the secret header) returns `200` | The 403 is injected by the **Cloudflare proxy**, not your app — `getWebhookInfo` shows a `104.21.x.x`/`172.67.x.x` IP, and Cloudflare's Bot Fight Mode/WAF blocks Telegram's POSTs before they reach Caddy | Set the `birr-track-api` record to **DNS-only (grey cloud)** so Telegram hits Caddy directly, then verify `curl -I https://birr-track-api.abenezer-ayalneh.dev/health` is `200`. To keep the proxy instead: disable Bot Fight Mode and add a WAF rule to Skip/Allow path `/telegram/webhook*` |
 | Telegram webhook not working | Wrong URL or secret | Re-run the webhook curl from Step 12 with sourced `.env`, then check `getWebhookInfo` |
-| Admin Panel blank page | `VITE_API_BASE_URL` not set at build time | Rebuild: `docker compose -f docker-compose.prod.yml up -d --build miniapp` |
+| Backend exits with `TELEGRAM_SUPPORT_URL is required` or `must be a valid HTTPS URL` | The support destination is empty, malformed, or uses HTTP | Set `TELEGRAM_SUPPORT_URL` to a valid HTTPS destination such as `https://t.me/birr_track_support`, then recreate the backend. |
+| Mini App blank page | `VITE_API_BASE_URL` not set at build time | Rebuild: `docker compose -f docker-compose.prod.yml up -d --build miniapp` |
 | MinIO connection refused | MinIO container not healthy | `docker compose -f docker-compose.prod.yml logs minio` — check `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY` in `.env` |
 | `mc`: `S3 API Requests must be made to API port` / bucket `Access Denied` | `mc` hit the console port, or `$STORAGE_*` were empty because the host `.env` wasn't sourced | Use the in-container form in Step 11 (`$MINIO_ROOT_USER`/`$MINIO_ROOT_PASSWORD` against API port 9000) — no host sourcing needed |
 | Migration fails: "Cannot find data-source.js" | Wrong path in command | Use `dist/src/database/data-source.js` (with `src/` prefix) |

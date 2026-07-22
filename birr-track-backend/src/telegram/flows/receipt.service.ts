@@ -7,9 +7,12 @@ import { QueueService } from '../../queue/queue.service'
 import { RateLimitService } from '../../shared/rate-limit/rate-limit.service'
 import { describeError } from '../../shared/utils/describe-error.util'
 import { SupportedLanguage } from '../../users/entities/user.entity'
+import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
+import { TelegramLinksService } from '../services/telegram-links.service'
 import { PHOTO_RATE_LIMIT_KEY_PREFIX } from '../telegram.constants'
-import { botText, formatBotText, isSupportedLanguage } from '../telegram.i18n'
+import { botText, isSupportedLanguage } from '../telegram.i18n'
+import { renderBotHtml, withTelegramHtml } from '../telegram-html'
 
 const DEFAULT_PHOTO_RATE_LIMIT = 30
 const DEFAULT_PHOTO_RATE_WINDOW_SECONDS = 60
@@ -25,6 +28,8 @@ export class ReceiptService {
 		private readonly configService: ConfigService,
 		private readonly queueService: QueueService,
 		private readonly rateLimitService: RateLimitService,
+		private readonly usersService: UsersService,
+		private readonly telegramLinks: TelegramLinksService,
 	) {}
 
 	@On('message')
@@ -52,19 +57,42 @@ export class ReceiptService {
 		const t = botText(this.getLanguage(ctx))
 
 		if (!ctx.state.user) {
-			await ctx.reply(t.unknownPhotoUser)
+			await ctx.reply(renderBotHtml(t.unknownPhotoUser, {}), withTelegramHtml(this.miniAppButton(t.registerBusiness)))
 			this.logger.log(`Rejected photo from unknown user ${telegramUserId}`)
 			return
 		}
 
 		if (ctx.state.business?.status === 'suspended') {
-			await ctx.reply(t.suspendedBusiness)
+			await ctx.reply(
+				renderBotHtml(t.suspendedBusiness, { businessName: ctx.state.business.name }),
+				withTelegramHtml({
+					reply_markup: {
+						inline_keyboard: [[{ text: t.contactSupport, url: this.telegramLinks.getSupportUrl() }]],
+					},
+				}),
+			)
 			this.logger.warn(`Rejected photo from suspended business user ${telegramUserId}`)
 			return
 		}
 
+		if (ctx.state.business?.status === 'rejected') {
+			await ctx.reply(
+				renderBotHtml(t.ownerRejected, {
+					businessName: ctx.state.business.name,
+					reason: ctx.state.business.rejectionReason ? `${t.reasonPrefix}${ctx.state.business.rejectionReason}` : t.reasonNotProvided,
+					nextStep: t.rejectedNextStep,
+				}),
+				withTelegramHtml(this.miniAppButton(t.reviseRegistration)),
+			)
+			this.logger.log(`Rejected photo from rejected business user ${telegramUserId}`)
+			return
+		}
+
 		if (ctx.state.business?.status !== 'active') {
-			await ctx.reply(t.pendingBusiness)
+			await ctx.reply(
+				renderBotHtml(t.pendingBusiness, { businessName: ctx.state.business?.name || '' }),
+				withTelegramHtml(this.miniAppButton(t.viewRegistration)),
+			)
 			this.logger.log(`Rejected photo from pending business user ${telegramUserId}`)
 			return
 		}
@@ -76,7 +104,7 @@ export class ReceiptService {
 		if (!result.allowed) {
 			this.logger.warn(`Throttled photo from user ${telegramUserId} (${result.count} in current window, limit ${limit})`)
 			if (result.count === limit + 1) {
-				await ctx.reply(t.throttled)
+				await ctx.reply(renderBotHtml(t.throttled, {}), withTelegramHtml())
 			}
 			return
 		}
@@ -102,7 +130,7 @@ export class ReceiptService {
 	private async sendMediaGroupAck(ctx: IdentifiedContext, mediaGroupId?: string): Promise<void> {
 		const t = botText(this.getLanguage(ctx))
 		if (!mediaGroupId) {
-			await ctx.reply(t.receivedOne)
+			await ctx.reply(renderBotHtml(t.receivedOne, {}), withTelegramHtml())
 			return
 		}
 
@@ -117,7 +145,7 @@ export class ReceiptService {
 				chatId: ctx.chat?.id || 0,
 				timeout: setTimeout(() => {
 					const count = newAck.count
-					ctx.reply(formatBotText(t.receivedMany, { count })).catch((err) => {
+					ctx.reply(renderBotHtml(t.receivedMany, { count }), withTelegramHtml()).catch((err) => {
 						this.logger.error(`Failed to send media group ack: ${describeError(err)}`)
 					})
 					this.mediaGroupAcks.delete(key)
@@ -139,16 +167,20 @@ export class ReceiptService {
 	}
 
 	async pingWaiterForReview(telegramBot: unknown, telegramUserId: string): Promise<void> {
-		const miniAppUrl = this.configService.get<string>('FRONTEND_APP_URL', 'http://localhost:3003')
-
 		try {
+			const user = await this.usersService.findAnyByTelegramId(telegramUserId)
+			const t = botText(user?.language || 'en')
 			const typedBot = telegramBot as { telegram?: { sendMessage?: (id: string, msg: string, opts: unknown) => Promise<void> } }
 			if (typedBot?.telegram?.sendMessage) {
-				await typedBot.telegram.sendMessage(telegramUserId, botText('en').reviewPing, {
-					reply_markup: {
-						inline_keyboard: [[{ text: `📱 ${botText('en').openMiniApp}`, web_app: { url: miniAppUrl } }]],
-					},
-				})
+				await typedBot.telegram.sendMessage(
+					telegramUserId,
+					renderBotHtml(t.reviewPing, {}),
+					withTelegramHtml({
+						reply_markup: {
+							inline_keyboard: [[{ text: t.reviewTransactions, web_app: { url: this.telegramLinks.getMiniAppUrl() } }]],
+						},
+					}),
+				)
 				this.logger.log(`Pinged waiter ${telegramUserId} for review`)
 			}
 		} catch (err) {
@@ -162,5 +194,13 @@ export class ReceiptService {
 			return sessionLanguage
 		}
 		return ctx.state.user?.language || 'en'
+	}
+
+	private miniAppButton(label: string) {
+		return {
+			reply_markup: {
+				inline_keyboard: [[{ text: label, web_app: { url: this.telegramLinks.getMiniAppUrl() } }]],
+			},
+		}
 	}
 }

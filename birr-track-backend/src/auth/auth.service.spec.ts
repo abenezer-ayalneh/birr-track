@@ -245,6 +245,29 @@ describe('AuthService', () => {
 			expect(result.response.refreshToken).toBe('refresh-1')
 		})
 
+		it('should not create an Admin Panel session for a pending Business registration', async () => {
+			const authDate = Math.floor(Date.now() / 1000)
+			const user = { id: '123456789' }
+			const params = new URLSearchParams({
+				user: JSON.stringify(user),
+				auth_date: authDate.toString(),
+			})
+
+			const dataCheckString = `auth_date=${authDate}\nuser=${JSON.stringify(user)}`
+			const secretKey = createHmac('sha256', 'WebAppData').update(mockBotToken).digest()
+			const hash = createHmac('sha256', secretKey).update(dataCheckString).digest('hex')
+			params.append('hash', hash)
+
+			jest.spyOn(usersService, 'isPlatformOwner').mockReturnValue(false)
+			jest.spyOn(usersService, 'findByTelegramId').mockResolvedValue({
+				...mockUser,
+				business: { id: 'business-1', name: 'Cafe Addis', status: 'pending' },
+			} as unknown as User)
+
+			await expect(service.authenticateFromInitData(params.toString())).rejects.toThrow('Business registration is not active')
+			expect(adminPanelSessions.create as jest.Mock).not.toHaveBeenCalled()
+		})
+
 		it('should throw when regular user not found', async () => {
 			const authDate = Math.floor(Date.now() / 1000)
 			const user = { id: '123456789' }

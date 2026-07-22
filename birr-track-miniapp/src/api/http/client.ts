@@ -1,14 +1,15 @@
 import type { ApiClient } from '../client'
 import type {
 	AccountMembership,
-  BusinessListing,
-  BusinessStatus,
-  Invite,
-  Language,
-  Me,
-  Page,
-  PageParams,
-  Registration,
+	BusinessListing,
+	BusinessStatus,
+	Invite,
+	Language,
+	Me,
+	Page,
+	PageParams,
+	Registration,
+	RegistrationEntryState,
   StaffMember,
   StaffRole,
   Summary,
@@ -18,8 +19,9 @@ import type {
   TransactionStatus,
   TransactionUpdate,
 } from '../types'
-import { HttpFetcher } from './fetcher'
-import { AuthSession } from './session'
+import { getInitData } from '../../lib/telegram'
+import { ApiError, HttpFetcher } from './fetcher'
+import { AuthSession, readErrorMessage } from './session'
 
 /* ------------------------------------------------------------------ *
  * Backend wire shapes (verified against birr-track-backend controllers
@@ -93,7 +95,21 @@ interface WireRegistration {
   businessName: string
   status: string
   registrant: { userId: string; telegramUserId: string; displayName: string }
-  createdAt: string
+	createdAt: string
+	rejectionReason?: string | null
+}
+
+interface WireRegistrationEntryState {
+	status: RegistrationEntryState['status']
+	telegramUserId: string
+	displayName: string
+	language: Language
+	userId?: string
+	role?: StaffRole
+	business?: { id: string; name: string; status: BusinessStatus; createdAt: string }
+	registration?: { id: string; businessName: string; requestedAt: string }
+	rejectionReason?: string | null
+	invite?: { id: string; businessId: string; businessName: string; role: 'waiter' | 'manager'; expiresAt: string }
 }
 
 interface WireBusiness {
@@ -162,9 +178,27 @@ function toRegistration(w: WireRegistration): Registration {
       displayName: w.registrant.displayName,
       telegramUserId: Number(w.registrant.telegramUserId),
     },
-    status: w.status === 'active' ? 'approved' : w.status === 'rejected' ? 'rejected' : 'pending',
-    requestedAt: w.createdAt,
-  }
+		status: w.status === 'active' ? 'approved' : w.status === 'rejected' ? 'rejected' : 'pending',
+		requestedAt: w.createdAt,
+		rejectionReason: w.rejectionReason ?? undefined,
+	}
+}
+
+function toEntryState(w: WireRegistrationEntryState): RegistrationEntryState {
+	return {
+		status: w.status,
+		telegramUserId: Number(w.telegramUserId),
+		displayName: w.displayName,
+		language: w.language,
+		userId: w.userId,
+		role: w.role,
+		business: w.business
+			? { id: w.business.id, name: w.business.name, status: w.business.status, createdAt: w.business.createdAt }
+			: undefined,
+		registration: w.registration,
+		rejectionReason: w.rejectionReason,
+		invite: w.invite,
+	}
 }
 
 /**
@@ -217,9 +251,23 @@ export class HttpApiClient implements ApiClient {
   constructor(
     private readonly baseUrl: string,
     private readonly session: AuthSession,
-  ) {
-    this.fetcher = new HttpFetcher(baseUrl, session)
-  }
+	) {
+		this.fetcher = new HttpFetcher(baseUrl, session)
+	}
+
+	async getEntryState(): Promise<RegistrationEntryState> {
+		const result = await this.publicRequest<WireRegistrationEntryState>('/registrations/preflight', { initData: getInitData() })
+		return toEntryState(result)
+	}
+
+	async submitRegistration(businessName: string, language: Language): Promise<RegistrationEntryState> {
+		const result = await this.publicRequest<WireRegistrationEntryState>('/registrations/self', {
+			initData: getInitData(),
+			businessName,
+			language,
+		})
+		return toEntryState(result)
+	}
 
   /** The authenticated user. Business name/status aren't on the auth payload, so
    * for managers/owners we hydrate the Business from the platform businesses list
@@ -433,20 +481,32 @@ export class HttpApiClient implements ApiClient {
     }
   }
 
-  async rejectRegistration(id: string, reason?: string): Promise<Registration> {
-    // The backend reject endpoint does not accept a reason body yet.
-    await this.fetcher.request<{ status: string; message: string }>(`/registrations/${id}/reject`, {
-      method: 'POST',
-    })
+	async rejectRegistration(id: string, reason?: string): Promise<Registration> {
+		await this.fetcher.request<{ status: string; message: string }>(`/registrations/${id}/reject`, {
+			method: 'POST',
+			body: reason?.trim() ? { reason: reason.trim() } : undefined,
+		})
     return {
       id,
       businessName: '',
       registrant: { displayName: '', telegramUserId: 0 },
       status: 'rejected',
-      requestedAt: new Date().toISOString(),
-      rejectionReason: reason,
-    }
-  }
+			requestedAt: new Date().toISOString(),
+			rejectionReason: reason,
+		}
+	}
+
+	private async publicRequest<T>(path: string, body: unknown): Promise<T> {
+		const response = await fetch(`${this.baseUrl}${path}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(body),
+		})
+		if (!response.ok) {
+			throw new ApiError(await readErrorMessage(response), response.status)
+		}
+		return (await response.json()) as T
+	}
 
   async listBusinesses(): Promise<BusinessListing[]> {
     const rows = await this.fetcher.request<WireBusiness[]>('/businesses')

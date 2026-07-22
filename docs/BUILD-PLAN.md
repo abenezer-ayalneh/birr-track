@@ -1,4 +1,4 @@
-# Build Plan: Roles, Multi-tenancy, and the Admin Panel
+# Build Plan: Roles, Multi-tenancy, and the Mini App
 
 Implements [docs/specs/roles-and-admin-panel.md](specs/roles-and-admin-panel.md). Terms per [CONTEXT.md](../CONTEXT.md), decisions per [docs/adr/](adr/).
 
@@ -39,12 +39,13 @@ Done when: app runs locally with mocked data for all four roles.
 
 ### D. Bot flows
 - Identity middleware: resolve sender → user/business on every update; gate photo handling; unknown-sender message (register or get invited).
-- `/register` conversation (name only, non-empty); Platform Owner DM with Approve/Reject inline buttons (idempotent with Mini App actions).
+- `/register` handoff to the Mini App Registration flow; Platform Owner DM with Approve/Reject inline buttons (idempotent with Mini App actions).
 - Invite flow: role choice, `KeyboardButtonRequestUsers` picker, automatic redemption on `/start` (ADR-0003).
 - Media-group-aware acks ("Received 5 receipts ✓"); needs-review ping; suspended-business refusal.
 - Mini App entry: `setChatMenuButton` + `web_app` keyboard buttons.
 
 ### E. Auth & scoped API
+- Public signed Registration endpoints: `POST /registrations/preflight` and `POST /registrations/self`; idempotent per Telegram account, with pending-Invite precedence and rejected-Registration resubmission.
 - `POST /auth/telegram`: validate Mini App `initData` HMAC, mint short-lived JWT (`userId`, `businessId`, `role`).
 - Global JWT guard + roles guard; **all existing `/transactions` endpoints become authenticated and business-scoped** (waiters see own only).
 - `EditLog.editedBy` from the authenticated user (drop `x-editor` header).
@@ -59,7 +60,8 @@ Done when: app runs locally with mocked data for all four roles.
 ## Wave 3 — needs C + D + E merged
 
 ### G. Mini App real integration & remaining views
-- Swap mock API client for the real one (`/auth/telegram` flow end-to-end inside Telegram).
+- Swap mock API client for the real one (`/registrations/preflight`, `/registrations/self`, then `/auth/telegram` for active users) end-to-end inside Telegram. Verify English/Amharic copy, Telegram theme handling, signed/expired initData errors, and network retry behavior.
+- Pre-registration entry states: unregistered overview with Register/Join choices, inline Business-name form, invited bot handoff, pending confirmation, rejected revision/resubmission, and active routing into the normal Mini App.
 - Manager/Owner views: summary cards (period totals, per-waiter, per-bank, attention counters → pre-filtered table), full Transactions table with filters + image + edit, Excel export, staff page (Owner: manager management).
 - Platform Owner views: pending registrations (approve/reject), business list with suspend.
 

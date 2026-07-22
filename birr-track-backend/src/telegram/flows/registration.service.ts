@@ -3,20 +3,16 @@ import { Action, Ctx, Update } from 'nestjs-telegraf'
 
 import { RegistrationsService } from '../../registrations/registrations.service'
 import { describeError } from '../../shared/utils/describe-error.util'
-import { SupportedLanguage } from '../../users/entities/user.entity'
-import { UsersService } from '../../users/users.service'
 import { IdentifiedContext } from '../services/identity.service'
-import { botText, formatBotText, isSupportedLanguage } from '../telegram.i18n'
+import { botText } from '../telegram.i18n'
+import { renderBotHtml, withTelegramHtml } from '../telegram-html'
 
 @Injectable()
 @Update()
 export class RegistrationService {
 	private readonly logger = new Logger(RegistrationService.name)
 
-	constructor(
-		private readonly registrationsService: RegistrationsService,
-		private readonly usersService: UsersService,
-	) {}
+	constructor(private readonly registrationsService: RegistrationsService) {}
 
 	@Action([/^approve_biz_/, /^reject_biz_/])
 	async handleCallbackQuery(@Ctx() ctx: IdentifiedContext): Promise<void> {
@@ -35,27 +31,19 @@ export class RegistrationService {
 
 	private async handleApproveBusiness(@Ctx() ctx: IdentifiedContext, data: string): Promise<void> {
 		const businessId = data.replace('approve_biz_', '')
+		const t = botText('en')
 
 		if (!ctx.state.isPlatformOwner) {
-			await ctx.answerCbQuery(botText(this.getLanguage(ctx)).approveOnlyPlatformOwner)
+			await ctx.answerCbQuery(t.approveOnlyPlatformOwner)
 			return
 		}
-		const t = botText(this.getLanguage(ctx))
 
 		try {
 			const { changed, business } = await this.registrationsService.approveBusiness(businessId)
-			if (!changed) {
-				await ctx.answerCbQuery(t.alreadyApproved)
-				return
-			}
+			await this.editDecisionMessage(ctx, t.approvedLine, business.name)
+			await ctx.answerCbQuery(changed ? t.businessApprovedCb : t.alreadyApproved)
 
-			const ownerMsg = formatBotText(t.ownerApproved, { businessName: business.name })
-			await this.notifyRegistrant(ctx, business.ownerUserId, ownerMsg)
-
-			await ctx.editMessageText(`✅ ${formatBotText(t.approvedLine, { businessName: business.name })}`, { reply_markup: undefined })
-			await ctx.answerCbQuery(t.businessApprovedCb)
-
-			this.logger.log(`Business ${businessId} approved by Platform Owner`)
+			if (changed) this.logger.log(`Business ${businessId} approved by Platform Owner`)
 		} catch (err) {
 			if (err instanceof NotFoundException) {
 				await ctx.answerCbQuery(t.businessNotFound)
@@ -72,27 +60,19 @@ export class RegistrationService {
 
 	private async handleRejectBusiness(@Ctx() ctx: IdentifiedContext, data: string): Promise<void> {
 		const businessId = data.replace('reject_biz_', '')
+		const t = botText('en')
 
 		if (!ctx.state.isPlatformOwner) {
-			await ctx.answerCbQuery(botText(this.getLanguage(ctx)).rejectOnlyPlatformOwner)
+			await ctx.answerCbQuery(t.rejectOnlyPlatformOwner)
 			return
 		}
-		const t = botText(this.getLanguage(ctx))
 
 		try {
 			const { changed, business } = await this.registrationsService.rejectBusiness(businessId)
-			if (!changed) {
-				await ctx.answerCbQuery(t.alreadyRejected)
-				return
-			}
+			await this.editDecisionMessage(ctx, t.rejectedLine, business.name)
+			await ctx.answerCbQuery(changed ? t.businessRejectedCb : t.alreadyRejected)
 
-			const rejectionMsg = formatBotText(t.ownerRejected, { businessName: business.name })
-			await this.notifyRegistrant(ctx, business.ownerUserId, rejectionMsg)
-
-			await ctx.editMessageText(`❌ ${formatBotText(t.rejectedLine, { businessName: business.name })}`, { reply_markup: undefined })
-			await ctx.answerCbQuery(t.businessRejectedCb)
-
-			this.logger.log(`Business ${businessId} rejected by Platform Owner`)
+			if (changed) this.logger.log(`Business ${businessId} rejected by Platform Owner`)
 		} catch (err) {
 			if (err instanceof NotFoundException) {
 				await ctx.answerCbQuery(t.businessNotFound)
@@ -107,28 +87,11 @@ export class RegistrationService {
 		}
 	}
 
-	private async notifyRegistrant(ctx: IdentifiedContext, ownerUserId: string | null, message: string): Promise<void> {
-		if (!ownerUserId) {
-			return
-		}
-
-		const owner = await this.usersService.findById(ownerUserId)
-		if (!owner) {
-			return
-		}
-
+	private async editDecisionMessage(ctx: IdentifiedContext, template: string, businessName: string): Promise<void> {
 		try {
-			await ctx.telegram.sendMessage(owner.telegramUserId, message)
+			await ctx.editMessageText(renderBotHtml(template, { businessName }), withTelegramHtml({ reply_markup: undefined }))
 		} catch (err) {
-			this.logger.error(`Failed to notify registrant ${owner.id}: ${describeError(err)}`)
+			this.logger.error(`Failed to update Registration moderation alert: ${describeError(err)}`)
 		}
-	}
-
-	private getLanguage(ctx: IdentifiedContext): SupportedLanguage {
-		const sessionLanguage = ctx.session?.language
-		if (isSupportedLanguage(sessionLanguage)) {
-			return sessionLanguage
-		}
-		return ctx.state.user?.language || 'en'
 	}
 }

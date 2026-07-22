@@ -6,7 +6,8 @@ import { BusinessesService } from '../businesses/businesses.service'
 import { MembershipDepartureEvent, MembershipEventsService } from '../users/membership-events.service'
 import { UsersService } from '../users/users.service'
 import { TELEGRAM_BOT_NAME } from './telegram.constants'
-import { botText, formatBotText } from './telegram.i18n'
+import { botText } from './telegram.i18n'
+import { renderBotHtml, withTelegramHtml } from './telegram-html'
 
 @Injectable()
 export class MembershipNotificationsService implements OnModuleInit, OnModuleDestroy {
@@ -38,7 +39,7 @@ export class MembershipNotificationsService implements OnModuleInit, OnModuleDes
 		if (event.kind === 'removed') {
 			await this.send(event.member.telegramUserId, event.member.language, 'removedFromBusiness', {
 				businessName: business.name,
-				actorName: event.actor?.displayName ?? 'Business management',
+				actorName: event.actor?.displayName ?? botText(event.member.language).businessManagement,
 				reason: this.formatReason(event.member.language, event.reason),
 			})
 
@@ -76,7 +77,7 @@ export class MembershipNotificationsService implements OnModuleInit, OnModuleDes
 		values: Record<string, string>,
 	): Promise<void> {
 		try {
-			await this.telegramBot.telegram.sendMessage(telegramUserId, formatBotText(botText(language)[key], values))
+			await this.telegramBot.telegram.sendMessage(telegramUserId, renderBotHtml(botText(language)[key], values), withTelegramHtml())
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : 'unknown error'
 			this.logger.warn(`Failed to send membership notification to ${telegramUserId}: ${message}`)
@@ -84,7 +85,8 @@ export class MembershipNotificationsService implements OnModuleInit, OnModuleDes
 	}
 
 	private formatReason(language: 'en' | 'am', reason: string | undefined): string {
-		if (!reason) return ''
-		return language === 'am' ? `ምክንያት: ${reason}` : `Reason: ${reason}`
+		const text = botText(language)
+		if (reason) return `${text.reasonPrefix}${reason}`
+		return language === 'am' ? '' : text.reasonNotProvided
 	}
 }
