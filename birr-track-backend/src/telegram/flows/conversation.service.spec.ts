@@ -145,14 +145,14 @@ describe('ConversationService', () => {
 			expect(reply).toHaveBeenCalledWith(renderBotHtml(botText('en').languagePrompt, {}), expect.objectContaining({ parse_mode: 'HTML' }))
 		})
 
-		it('opens Platform Owner tools after language selection', async () => {
+		it('greets the Platform Owner without a message keyboard after language selection', async () => {
 			const { ctx, reply } = buildStart({ isPlatformOwner: true })
 			ctx.session = { language: 'en' }
 
 			await service.handleStart(ctx)
 
 			expect(reply).toHaveBeenCalledWith(botText('en').welcomePlatformOwner, expect.objectContaining({ parse_mode: 'HTML' }))
-			expect(getInlineKeyboard(reply)).toEqual([[expect.objectContaining({ text: 'Open Mini App' })]])
+			expect(getInlineKeyboard(reply)).toBeUndefined()
 			expect(invitesService.redeem).not.toHaveBeenCalled()
 		})
 
@@ -219,10 +219,7 @@ describe('ConversationService', () => {
 				renderBotHtml(botText('en').welcomeRegistered, { businessName: 'Cafe Addis', role: 'Manager' }),
 				expect.objectContaining({ parse_mode: 'HTML' }),
 			)
-			expect(getReplyKeyboard(reply)).toEqual([
-				[expect.objectContaining({ text: 'Submit Receipt' }), expect.objectContaining({ text: 'Open Mini App' })],
-				[expect.objectContaining({ text: 'Invite Member' })],
-			])
+			expect(getReplyKeyboard(reply)).toEqual([[expect.objectContaining({ text: 'Submit Receipt' })], [expect.objectContaining({ text: 'Invite Member' })]])
 		})
 
 		it('omits the Invite button from a Waiter main menu', async () => {
@@ -234,7 +231,7 @@ describe('ConversationService', () => {
 
 			await service.handleStart(ctx)
 
-			expect(getReplyKeyboard(reply)).toEqual([[expect.objectContaining({ text: 'Submit Receipt' }), expect.objectContaining({ text: 'Open Mini App' })]])
+			expect(getReplyKeyboard(reply)).toEqual([[expect.objectContaining({ text: 'Submit Receipt' })]])
 		})
 
 		it('starts the Waiter Invite flow for a Manager deep link', async () => {

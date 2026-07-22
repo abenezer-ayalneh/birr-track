@@ -29,7 +29,7 @@ Prospective Owner                         Platform Owner (bot operator)
         ▼
   Pending Registration view
         │
-        ├─ approved ─► DM + [ Open Mini App ] ─► Owner, Business active
+        ├─ approved ─► DM ─► Owner, Business active
         └─ rejected ─► DM + [ Revise Registration ] ─► edit and resubmit
 ```
 
@@ -77,7 +77,7 @@ Send: /register
 - `invited` → return to the bot to redeem the Invite.
 - `pending` → view the submitted Registration.
 - `rejected` → view the rejection reason and revise the Registration.
-- `active` → use `/start` and **Open Mini App** for the existing Business Membership; no second Registration is created.
+- `active` → use the persistent chat menu to enter the Mini App for the existing Business Membership; no second Registration is created.
 
 The bot does not collect a Business name in chat.
 
@@ -98,7 +98,7 @@ Tap: Submit for approval
 
 **Expected result:** The Prospective Owner receives exactly one decision DM when the state changes, whether the decision came from the bot alert or Mini App:
 
-- **Approved:** an outcome-first approval card with an **Open Mini App** action. The Business becomes `active` and the Prospective Owner becomes its Owner.
+- **Approved:** an outcome-first approval card. The Business becomes `active` and the Prospective Owner becomes its Owner.
 - **Rejected:** a revision card containing the Business name and stored reason (or that no reason was provided), with a **Revise Registration** action. The Mini App pre-fills the existing name; submitting it again moves the same Business back to `pending` and sends a new Platform Owner alert.
 
 ---
@@ -121,7 +121,7 @@ Pick **either** B-path. Both hit the same backend state and are idempotent.
 Tap: Approve   (or Reject)
 ```
 **Expected result:**
-- **Approve:** Business → `active`; the Prospective Owner becomes the Owner; they get the localized approval message with **Open Mini App**; the Platform Owner alert is edited into its final approved card.
+- **Approve:** Business → `active`; the Prospective Owner becomes the Owner; they get the localized approval message; the Platform Owner alert is edited into its final approved card.
 - **Reject:** Business → `rejected`; the Prospective Owner gets the localized rejection DM with **Revise Registration**; the Platform Owner alert is edited into its final rejected card.
 
 The callback popup is a short plain-text outcome. Repeating a decision is an idempotent no-op and does not send another Prospective Owner DM.
@@ -137,7 +137,7 @@ The callback popup is a short plain-text outcome. Repeating a decision is an ide
 #### B2.1: Open the Platform section
 
 ```
-Bot menu ► Open Mini App ► bottom nav ► Platform
+Persistent chat menu ► Mini App ► bottom nav ► Platform
 ```
 **Expected result:** The **Platform** page loads (visible only to `platform_owner` role) with **Registrations** and **Businesses** tabs. The Registrations queue shows the Business name, Prospective Owner identity, and request date.
 
@@ -161,7 +161,7 @@ Tap: Approve   (or Reject) on the row
 
 After approval, confirm onboarding succeeded:
 
-- [ ] **Owner side:** the Prospective Owner received the approval message, its **Open Mini App** action works, and `/start` now shows the active Business menu.
+- [ ] **Owner side:** the Prospective Owner received the approval message, and `/start` now shows the active Business menu. The persistent chat menu remains the general Mini App entry point.
 - [ ] **Bot presentation:** each normal English card has one descriptive emoji, a bold outcome-first title, short labeled facts, and one clear next step; callback popups remain short plain text.
 - [ ] **Platform side:** the Business no longer appears in the **Registrations** queue and shows as `active` in the **Businesses** tab (or `GET /registrations` no longer returns it).
 - [ ] **DB check (optional, authoritative):**

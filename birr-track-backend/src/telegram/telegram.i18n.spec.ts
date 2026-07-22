@@ -70,7 +70,7 @@ const RETAINED_AMHARIC_KEYS = [
 
 describe('Telegram copy catalog', () => {
 	it('keeps the complete English catalog on its reviewed golden', () => {
-		expect(digest(botText('en'))).toBe('a09edc278995cb54257986c836a034680e5c3a6e56b3e3dce76e83136a723666')
+		expect(digest(botText('en'))).toBe('740dca5a749b1972cfbc881935c58688992c553281dec6abe0f13a99f89b0830')
 	})
 
 	it('keeps every retained Amharic surface byte-for-byte on its reviewed golden', () => {

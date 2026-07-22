@@ -79,7 +79,7 @@ export class ConversationService implements OnModuleInit {
 		const t = botText(this.getLanguage(ctx))
 
 		if (ctx.state.isPlatformOwner && !ctx.state.user) {
-			await ctx.reply(renderBotHtml(t.welcomePlatformOwner, {}), withTelegramHtml(this.getPlatformOwnerMenu(ctx)))
+			await ctx.reply(renderBotHtml(t.welcomePlatformOwner, {}), withTelegramHtml())
 			return
 		}
 
@@ -178,7 +178,7 @@ export class ConversationService implements OnModuleInit {
 
 		const t = botText(this.getLanguage(ctx))
 		if (ctx.state.isPlatformOwner && !ctx.state.user) {
-			await ctx.reply(renderBotHtml(t.welcomePlatformOwner, {}), withTelegramHtml(this.getPlatformOwnerMenu(ctx)))
+			await ctx.reply(renderBotHtml(t.welcomePlatformOwner, {}), withTelegramHtml())
 			return
 		}
 
@@ -565,7 +565,7 @@ export class ConversationService implements OnModuleInit {
 
 	private getMainMenu(ctx: IdentifiedContext, role = ctx.state.user?.role) {
 		const t = botText(this.getLanguage(ctx))
-		const rows = [[Markup.button.text(t.submitReceipt), Markup.button.webApp(t.openMiniApp, this.telegramLinks.getMiniAppUrl())]]
+		const rows = [[Markup.button.text(t.submitReceipt)]]
 		if (this.getInvitableRoles(role).length > 0) {
 			rows.push([Markup.button.text(t.inviteCommand)])
 		}
@@ -583,10 +583,6 @@ export class ConversationService implements OnModuleInit {
 
 	private getSupportKeyboard(ctx: IdentifiedContext) {
 		return Markup.inlineKeyboard([[Markup.button.url(botText(this.getLanguage(ctx)).contactSupport, this.telegramLinks.getSupportUrl())]])
-	}
-
-	private getPlatformOwnerMenu(ctx: IdentifiedContext) {
-		return this.getMiniAppActionKeyboard(ctx, botText(this.getLanguage(ctx)).openMiniApp)
 	}
 
 	private getSession(ctx: IdentifiedContext): ConversationSession {

@@ -364,16 +364,17 @@ export class RegistrationsService {
 							reason: business.rejectionReason ? `${t.reasonPrefix}${business.rejectionReason}` : t.reasonNotProvided,
 							nextStep: t.rejectedNextStep,
 						})
-			const buttonText = decision === 'approved' ? t.openMiniApp : t.reviseRegistration
+			const options =
+				decision === 'approved'
+					? withTelegramHtml()
+					: withTelegramHtml({
+							reply_markup: {
+								inline_keyboard: [[{ text: t.reviseRegistration, web_app: { url: this.telegramLinksService.getMiniAppUrl() } }]],
+							},
+					})
 			await axios.post(
 				`https://api.telegram.org/bot${botToken}/sendMessage`,
-				withTelegramHtml({
-					chat_id: owner.telegramUserId,
-					text,
-					reply_markup: {
-						inline_keyboard: [[{ text: buttonText, web_app: { url: this.telegramLinksService.getMiniAppUrl() } }]],
-					},
-				}),
+				{ chat_id: owner.telegramUserId, text, ...options },
 			)
 		} catch (error) {
 			this.logger.error(`Failed to notify Prospective Owner ${owner.id} that registration ${business.id} was ${decision}: ${describeError(error)}`)

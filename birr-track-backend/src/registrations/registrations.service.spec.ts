@@ -255,7 +255,7 @@ describe('RegistrationsService', () => {
 			expect(userRepo.save).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1', role: 'owner' }))
 		})
 
-		it('notifies the Prospective Owner once in their language with escaped HTML and an Open Mini App action', async () => {
+		it('notifies the Prospective Owner once with escaped HTML and no literal Mini App action', async () => {
 			const business = { id: '123', status: 'pending', name: 'Cafe <Addis> & Co', ownerUserId: 'user-1' } as Business
 			const registrant = {
 				id: 'user-1',
@@ -278,16 +278,14 @@ describe('RegistrationsService', () => {
 				chat_id: string
 				text: string
 				parse_mode: string
-				reply_markup: { inline_keyboard: { text: string; web_app: { url: string } }[][] }
+				reply_markup?: { inline_keyboard: { text: string; web_app: { url: string } }[][] }
 			}
 			expect(telegramCall[0]).toBe('https://api.telegram.org/botbot-token/sendMessage')
 			expect(payload).toMatchObject({ chat_id: '111', parse_mode: 'HTML' })
 			expect(payload.text).toContain('Cafe &lt;Addis&gt; &amp; Co')
-			expect(payload.reply_markup.inline_keyboard[0][0]).toEqual({
-				text: 'Open Mini App',
-				web_app: { url: 'https://mini-app.example.com' },
-			})
-			expect(telegramLinksService.getMiniAppUrl).toHaveBeenCalledTimes(1)
+			expect(payload.text).not.toContain('Mini App')
+			expect(payload.reply_markup).toBeUndefined()
+			expect(telegramLinksService.getMiniAppUrl).not.toHaveBeenCalled()
 		})
 
 		it('should not re-save a registrant who is already owner', async () => {

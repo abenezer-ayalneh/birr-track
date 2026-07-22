@@ -439,7 +439,7 @@ Go to your repo → Settings → Secrets and variables → Actions. Add:
 
 - [ ] `curl https://birr-track-api.abenezer-ayalneh.dev/health` returns OK
 - [ ] `curl https://birr-track-telegram-app.abenezer-ayalneh.dev` returns HTML
-- [ ] `/start` shows the correct contextual **Open Mini App**, **Register a Business**, **View Registration**, or **Revise Registration** action for the test account
+- [ ] `/start` shows the persistent chat-menu Mini App entry and the correct contextual **Register a Business**, **View Registration**, or **Revise Registration** action for the test account
 - [ ] A suspended Business's **Contact Support** action opens `TELEGRAM_SUPPORT_URL`
 - [ ] Send a Receipt image to the Telegram bot → Transaction is created
 - [ ] RunPod dashboard shows the endpoint received a request

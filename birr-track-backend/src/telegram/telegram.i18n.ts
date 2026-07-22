@@ -152,9 +152,9 @@ const en: BotText = {
 	failedReject: 'Failed to reject.',
 	businessApprovedCb: 'Business approved.',
 	businessRejectedCb: 'Business rejected.',
-	ownerApproved: '✅ <b>Registration approved</b>\n\n<b>Business:</b> {businessName}\n\nOpen the Mini App to finish setup.',
+	ownerApproved: '✅ <b>Registration approved</b>\n\n<b>Business:</b> {businessName}\n\nYour Business is now active.',
 	ownerRejected: '❌ <b>Registration needs revision</b>\n\n<b>Business:</b> {businessName}\n{reason}\n\n{nextStep}',
-	rejectedNextStep: 'Open the Mini App to revise and resubmit the Registration.',
+	rejectedNextStep: 'Use the Revise Registration action below to update and resubmit.',
 	approvedLine: '✅ <b>Registration approved</b>\n\n<b>Business:</b> {businessName}\n\nThe Prospective Owner has been notified.',
 	rejectedLine: '❌ <b>Registration rejected</b>\n\n<b>Business:</b> {businessName}\n\nThe Prospective Owner has been notified.',
 	newRegistration:
